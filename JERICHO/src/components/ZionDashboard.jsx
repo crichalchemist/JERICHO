@@ -107,6 +107,7 @@ function useZionState() {
     linkBlockToDeliverable,
     assignSuggestionLink,
     generatePlan,
+    commitPreviewItems,
     applyPlan
   } = useIdentityStore();
   return {

@@ -86,3 +86,19 @@ export const selectVisibleDraftItems = ({
       return (a.title || '').localeCompare(b.title || '');
     });
 };
+
+export const selectVisiblePreviewItems = ({
+  cycle,
+  draftItems = [],
+  forecastItems = [],
+  timeZone = APP_TIME_ZONE,
+  deadlineDayKey = null
+} = {}) => {
+  const combined = [...(draftItems || []), ...(forecastItems || [])];
+  return selectVisibleDraftItems({
+    cycle,
+    draftItems: combined,
+    timeZone,
+    deadlineDayKey
+  });
+};

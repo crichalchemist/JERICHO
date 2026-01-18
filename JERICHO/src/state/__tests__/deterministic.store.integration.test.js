@@ -16,6 +16,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import structuredClone from '@ungap/structured-clone';
 import { attemptGoalAdmissionPure } from '../identityStore.js';
 import { computeContractHash } from '../../domain/goal/GoalAdmissionPolicy.ts';
+import { buildValidGoalContract } from '../../domain/goal/testHelpers.ts';
 
 const NOW_ISO = '2026-01-10T12:00:00.000Z';
 
@@ -32,25 +33,45 @@ function buildMinimalState() {
 }
 
 function createValidContract(overrides = {}) {
-  const contract = {
-    planGenerationMechanismClass: 'GENERIC_DETERMINISTIC',
-    terminalOutcome: { text: 'Achieve project milestone', hash: '', verificationCriteria: 'Feature is live', isConcrete: true },
+  const contract = buildValidGoalContract({
+    terminalOutcome: { text: 'Achieve project milestone', verificationCriteria: 'Feature is live', isConcrete: true },
     deadline: { dayKey: '2026-02-20', isHardDeadline: true },
-    sacrifice: { whatIsGivenUp: 'Weekend time', duration: '6 weeks', quantifiedImpact: '10 hours/week', rationale: 'Focus on delivery', hash: '' },
+    sacrifice: { whatIsGivenUp: 'Weekend time', duration: '6 weeks', quantifiedImpact: '10 hours/week', rationale: 'Focus on delivery' },
     temporalBinding: { daysPerWeek: 5, activationTime: '09:00', sessionDurationMinutes: 120, weeklyMinutes: 600, startDayKey: '2026-01-10' },
-    causalChain: { steps: [{ sequence: 1, description: 'Plan' }, { sequence: 2, description: 'Execute' }, { sequence: 3, description: 'Review' }], hash: '' },
+    causalChain: {
+      steps: [
+        { sequence: 1, description: 'Plan', approximateDayOffset: 7 },
+        { sequence: 2, description: 'Execute', approximateDayOffset: 14 },
+        { sequence: 3, description: 'Review', approximateDayOffset: 21 }
+      ]
+    },
     reinforcement: { dailyExposureEnabled: true, dailyMechanism: 'Calendar title', checkInFrequency: 'DAILY', triggerDescription: 'Morning' },
-    inscription: { contractHash: '', inscribedAtISO: NOW_ISO, acknowledgment: 'I accept', acknowledgmentHash: '', isCompromised: false },
+    inscription: { inscribedAtISO: NOW_ISO, acknowledgment: 'I accept', isCompromised: false },
     isAspirational: false,
     ...overrides
-  };
-  // compute and populate hashes
-  contract.inscription.contractHash = computeContractHash(contract);
-  contract.terminalOutcome.hash = contract.inscription.contractHash.slice(0, 16);
-  contract.sacrifice.hash = contract.inscription.contractHash.slice(16, 32);
-  contract.causalChain.hash = contract.inscription.contractHash.slice(32);
-  contract.inscription.acknowledgmentHash = contract.inscription.contractHash.slice(0, 16);
+  });
+
+  if (contract.inscription) {
+    contract.inscription.contractHash = computeContractHash(contract);
+    contract.terminalOutcome.hash = contract.inscription.contractHash.slice(0, 16);
+    contract.sacrifice.hash = contract.inscription.contractHash.slice(16, 32);
+    contract.causalChain.hash = contract.inscription.contractHash.slice(32);
+    contract.inscription.acknowledgmentHash = contract.inscription.contractHash.slice(0, 16);
+  }
   return contract;
+}
+
+function admitOrThrow(state, contract) {
+  const result = attemptGoalAdmissionPure(state, contract);
+  if (result.result?.status !== 'ADMITTED') {
+    const details = JSON.stringify({
+      status: result.result?.status,
+      code: result.result?.code,
+      rejectionCodes: result.result?.rejectionCodes
+    });
+    throw new Error(`Admission failed: ${details}`);
+  }
+  return result;
 }
 
 describe('Deterministic Plan Generator - Store Integration', () => {
@@ -103,7 +124,7 @@ describe('Deterministic Plan Generator - Store Integration', () => {
       const buildPlan = () => {
         const state = buildMinimalState();
         const contract = createValidContract();
-        const { nextState } = attemptGoalAdmissionPure(state, contract);
+        const { nextState } = admitOrThrow(state, contract);
         const cycle = Object.values(nextState.cyclesById)[0];
         return {
           forecastByDayKey: cycle.coldPlan.forecastByDayKey,
@@ -123,7 +144,7 @@ describe('Deterministic Plan Generator - Store Integration', () => {
       const state = buildMinimalState();
       const contract = createValidContract();
       
-      const { nextState: state1 } = attemptGoalAdmissionPure(state, contract);
+      const { nextState: state1 } = admitOrThrow(state, contract);
       const cycle1 = Object.values(state1.cyclesById)[0];
       const dayKeys1 = Object.keys(cycle1.coldPlan.forecastByDayKey);
       
@@ -142,7 +163,7 @@ describe('Deterministic Plan Generator - Store Integration', () => {
       const state = buildMinimalState();
       const contract = createValidContract();
       
-      const { nextState, result } = attemptGoalAdmissionPure(state, contract);
+      const { nextState, result } = admitOrThrow(state, contract);
       const admittedCycle = nextState.cyclesById[result.cycleId];
       
       // Each day should have <= maxBlocksPerDay (default 4)
@@ -155,7 +176,7 @@ describe('Deterministic Plan Generator - Store Integration', () => {
       const state = buildMinimalState();
       const contract = createValidContract();
       
-      const { nextState, result } = attemptGoalAdmissionPure(state, contract);
+      const { nextState, result } = admitOrThrow(state, contract);
       const admittedCycle = nextState.cyclesById[result.cycleId];
       
       const totalBlocks = Object.values(admittedCycle.coldPlan.forecastByDayKey).reduce(
@@ -172,7 +193,7 @@ describe('Deterministic Plan Generator - Store Integration', () => {
       const state = buildMinimalState();
       const contract = createValidContract();
       
-      const { nextState, result } = attemptGoalAdmissionPure(state, contract);
+      const { nextState, result } = admitOrThrow(state, contract);
       const workspace = nextState.deliverablesByCycleId[result.cycleId];
       
       expect(workspace).toBeDefined();
@@ -193,7 +214,7 @@ describe('Deterministic Plan Generator - Store Integration', () => {
         }
       });
       
-      const { nextState, result } = attemptGoalAdmissionPure(state, contract);
+      const { nextState, result } = admitOrThrow(state, contract);
       const workspace = nextState.deliverablesByCycleId[result.cycleId];
       
       expect(workspace.deliverables.length).toBeGreaterThanOrEqual(3);
@@ -205,7 +226,7 @@ describe('Deterministic Plan Generator - Store Integration', () => {
       const state = buildMinimalState();
       const contract = createValidContract();
       
-      const { nextState, result } = attemptGoalAdmissionPure(state, contract);
+      const { nextState, result } = admitOrThrow(state, contract);
       const admittedCycle = nextState.cyclesById[result.cycleId];
       
       expect(admittedCycle.coldPlan.version).toBeDefined();
@@ -217,7 +238,7 @@ describe('Deterministic Plan Generator - Store Integration', () => {
       const state = buildMinimalState();
       const contract = createValidContract();
       
-      const { nextState, result } = attemptGoalAdmissionPure(state, contract);
+      const { nextState, result } = admitOrThrow(state, contract);
       const admittedCycle = nextState.cyclesById[result.cycleId];
       
       const historyLength = admittedCycle.coldPlanHistory.length;
@@ -239,7 +260,7 @@ describe('Deterministic Plan Generator - Store Integration', () => {
         deadline: { dayKey: '2026-01-15', isHardDeadline: true } // Only 5 days away
       });
       
-      const { nextState, result } = attemptGoalAdmissionPure(state, contract);
+      const { nextState, result } = admitOrThrow(state, contract);
       
       // Should still admit goal (temporal binding is valid)
       expect(result.status).toBe('ADMITTED');
@@ -253,7 +274,6 @@ describe('Deterministic Plan Generator - Store Integration', () => {
       const state = buildMinimalState();
       const contract = createValidContract();
       delete contract.planGenerationMechanismClass;
-      
       const { nextState, result } = attemptGoalAdmissionPure(state, contract);
       
       // Should be rejected per Phase 3 policy
@@ -267,7 +287,7 @@ describe('Deterministic Plan Generator - Store Integration', () => {
       const state = buildMinimalState();
       const contract = createValidContract();
       
-      const { nextState, result } = attemptGoalAdmissionPure(state, contract);
+      const { nextState, result } = admitOrThrow(state, contract);
       const admittedCycle = nextState.cyclesById[result.cycleId];
       
       // Core properties should exist
