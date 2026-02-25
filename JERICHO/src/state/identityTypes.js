@@ -359,6 +359,19 @@
  *   enableQualityOptimizer?: boolean;
  *   optimizerMaxIterations?: number;
  *   optimizerMaxCandidates?: number;
+ *   enableMilestonePacing?: boolean;
+ *   pacingCadenceMode?: 'weekly'|'biweekly'|'adaptive';
+ *   actions?: Array<{ id: string; estimateMin?: number; category?: string; dependencies?: string[] }>;
+ *   milestones?: Array<{
+ *     milestoneId: string;
+ *     windowStartDayKey: string;
+ *     windowEndDayKey: string;
+ *     checkpointActionIds?: string[];
+ *     actionIds?: string[];
+ *   }>;
+ *   executionHorizonDays?: number;
+ *   maxScheduledMinutesPerDay?: number;
+ *   maxScheduledMinutesPerWeek?: number;
  * }} PlanDraft
  */
 
@@ -447,6 +460,17 @@
  *   qualityScoreOptimizedByComponent?: Record<string, number>;
  *   qualityImprovementDelta?: number;
  *   optimizerRejectedCandidatesSummary?: Record<string, number>;
+ *   pacingCadenceModeUsed?: string;
+ *   pacingInjectedCheckpointCount?: number;
+ *   pacingInjectedByMilestone?: Record<string, { count: number; ids: string[] }>;
+ *   pacingSegmentCount?: number;
+ *   pacingRequiredCriticalMinutes?: number;
+ *   pacingAvailableWindowMinutes?: number;
+ *   pacingSlackRatio?: number;
+ *   pacingInfeasibleMilestonesCount?: number;
+ *   pacingByMilestone?: Record<string, any>;
+ *   pacingAnchoringMissCount?: number;
+ *   milestonePlacedRatioAvg?: number;
  * }} PlanPreview
  */
 

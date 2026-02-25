@@ -956,6 +956,8 @@ function enforceSafeDefaults(state) {
     if (typeof state.planDraft.autoPolicySelection !== 'boolean') state.planDraft.autoPolicySelection = false;
     if (!Number.isFinite(state.planDraft.minPolicyHoldDays)) state.planDraft.minPolicyHoldDays = 7;
     if (typeof state.planDraft.enableQualityOptimizer !== 'boolean') state.planDraft.enableQualityOptimizer = false;
+    if (typeof state.planDraft.enableMilestonePacing !== 'boolean') state.planDraft.enableMilestonePacing = false;
+    if (!state.planDraft.pacingCadenceMode) state.planDraft.pacingCadenceMode = 'adaptive';
   }
   if (!state.planCalibration) state.planCalibration = { confidence: 0, assumptions: [], missingInfo: [] };
   if (!('planPreview' in state)) state.planPreview = null;
@@ -2715,6 +2717,8 @@ function applyOnboardingInputs(state, onboarding = {}) {
     autoPolicySelection: false,
     minPolicyHoldDays: 7,
     enableQualityOptimizer: false,
+    enableMilestonePacing: false,
+    pacingCadenceMode: 'adaptive',
   };
 
   const suggested = buildSuggestedBlocks({
@@ -2954,6 +2958,8 @@ function startNewCycle(state, payload = {}) {
     autoPolicySelection: false,
     minPolicyHoldDays: 7,
     enableQualityOptimizer: false,
+    enableMilestonePacing: false,
+    pacingCadenceMode: 'adaptive',
   };
 
   const suggested = buildSuggestedBlocks({
@@ -3418,12 +3424,26 @@ function applyDraftSchedule(state) {
     priorSignalsSnapshot: appliedPreview.policySelectionSignalsSnapshot || priorState?.priorSignalsSnapshot || null,
   };
   state.qualityPolicyIdApplied = appliedPolicyId;
+  state.qualityScoreApplied = appliedPreview.qualityScoreBaseline;
+  state.qualityScoreAppliedByComponent = appliedPreview.qualityScoreBaselineByComponent || null;
   state.policySelectionDecisionApplied = appliedPreview.policySelectionDecision || null;
   state.policySelectionReasonCodesApplied = [...(appliedPreview.policySelectionReasonCodes || [])];
+  state.pacingInjectedCheckpointCountApplied = appliedPreview.pacingInjectedCheckpointCount || 0;
+  state.pacingInjectedByMilestoneApplied = appliedPreview.pacingInjectedByMilestone || {};
   const previewPolicyId = state.planPreview?.qualityPolicyIdUsed || null;
   const previewReasonCodes = JSON.stringify(state.planPreview?.policySelectionReasonCodes || []);
   const appliedReasonCodes = JSON.stringify(appliedPreview.policySelectionReasonCodes || []);
   state.policySelectionParity = Boolean(previewPolicyId && previewPolicyId === appliedPolicyId && previewReasonCodes === appliedReasonCodes);
+  state.scoreParity = Boolean(
+    Number(state.planPreview?.qualityScoreBaseline) === Number(appliedPreview.qualityScoreBaseline) &&
+      JSON.stringify(state.planPreview?.qualityScoreBaselineByComponent || {}) ===
+        JSON.stringify(appliedPreview.qualityScoreBaselineByComponent || {})
+  );
+  state.pacingParity = Boolean(
+    Number(state.planPreview?.pacingInjectedCheckpointCount || 0) === Number(appliedPreview.pacingInjectedCheckpointCount || 0) &&
+      JSON.stringify(state.planPreview?.pacingInjectedByMilestone || {}) ===
+        JSON.stringify(appliedPreview.pacingInjectedByMilestone || {})
+  );
   state.planEvents = state.planEvents || [];
   state.planEvents.push({
     id: `draft-policy-applied-${cycle.id}-${Date.now()}`,
@@ -3432,8 +3452,11 @@ function applyDraftSchedule(state) {
     goalId: contract.goalId,
     dayKey: nowDay,
     qualityPolicyIdApplied: appliedPolicyId,
+    qualityScoreApplied: appliedPreview.qualityScoreBaseline,
     previewPolicyIdUsed: previewPolicyId,
     policySelectionParity: state.policySelectionParity,
+    scoreParity: state.scoreParity,
+    pacingParity: state.pacingParity,
     reasonCodes: appliedPreview.policySelectionReasonCodes || [],
     atISO: state.appTime?.nowISO || new Date().toISOString(),
   });

@@ -182,6 +182,18 @@ export function computePolicySelectionMetrics({ preview = null, applied = null }
   };
 }
 
+export function computePacingComparisonMetrics({ withPacing = null, withoutPacing = null } = {}) {
+  const withRatio = Number(withPacing?.milestonePlacedRatioAvg || 0);
+  const withoutRatio = Number(withoutPacing?.milestonePlacedRatioAvg || 0);
+  const withMiss = Number(withPacing?.pacingAnchoringMissCount || 0);
+  const withoutMiss = Number(withoutPacing?.pacingAnchoringMissCount || 0);
+  return {
+    pacingInjectedCheckpointCount: Number(withPacing?.pacingInjectedCheckpointCount || 0),
+    pacingMilestonePlacedRatioDelta: withRatio - withoutRatio,
+    pacingAnchoringMissDelta: withMiss - withoutMiss,
+  };
+}
+
 function dayDiff(startDayKey, endDayKeyExclusive) {
   const s = new Date(`${startDayKey}T00:00:00.000Z`).getTime();
   const e = new Date(`${endDayKeyExclusive}T00:00:00.000Z`).getTime();
