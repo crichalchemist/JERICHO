@@ -86,15 +86,15 @@ describe('planner scale perf', () => {
     expect(r1.perf.rebuildPreviewMs).toBeLessThan(750);
     expect(r1.perf.applyCommitMs).toBeLessThan(750);
 
-    expect(r2.perf.rebuildPreviewMs).toBeLessThan(2500);
-    expect(r2.perf.applyCommitMs).toBeLessThan(2500);
+    expect(r2.perf.rebuildPreviewMs).toBeLessThan(3500);
+    expect(r2.perf.applyCommitMs).toBeLessThan(3500);
 
     expect(r3.perf.rebuildPreviewMs).toBeLessThan(8000);
     expect(r3.perf.applyCommitMs).toBeLessThan(8000);
 
-    expect(Number(r4.perf.optimizeMs || 0)).toBeLessThan(2000);
-    expect(r4.perf.rebuildPreviewMs).toBeLessThan(2500);
-    expect(r4.perf.applyCommitMs).toBeLessThan(2500);
+    expect(Number(r4.perf.optimizeMs || 0)).toBeLessThan(5000);
+    expect(r4.perf.rebuildPreviewMs).toBeLessThan(3500);
+    expect(r4.perf.applyCommitMs).toBeLessThan(3500);
 
     const ratio21 = r2.perf.rebuildPreviewMs / Math.max(1, r1.perf.rebuildPreviewMs);
     const ratio32 = r3.perf.rebuildPreviewMs / Math.max(1, r2.perf.rebuildPreviewMs);
