@@ -111,6 +111,13 @@
  *   goalPlan?: { planProof: GoalPlanProof; scheduleBlocks: ColdPlanScheduleBlock[]; generatedAtISO: string };
  *   planProof?: PlanProof;
  *   autoAsanaPlan?: AutoAsanaPlan;
+ *   policyState?: {
+ *     currentPolicyId?: string;
+ *     policySetAtDayKey?: string;
+ *     policyAgeDays?: number;
+ *     priorSignalsSnapshot?: any;
+ *   };
+ *   lastPolicySelectionDecision?: any;
  *   lastPlanAppliedAtISO?: string | null;
  *   goalAdmission?: { status: AdmissionStatus; reasonCodes: AdmissionReasonCode[]; admittedAtISO?: string };
  * }} Cycle
@@ -346,6 +353,12 @@
  *   successDefinition?: string;
  *   horizonDays: number;
  *   daysPerWeek: number;
+ *   qualityPolicyId?: string;
+ *   autoPolicySelection?: boolean;
+ *   minPolicyHoldDays?: number;
+ *   enableQualityOptimizer?: boolean;
+ *   optimizerMaxIterations?: number;
+ *   optimizerMaxCandidates?: number;
  * }} PlanDraft
  */
 
@@ -423,6 +436,17 @@
  *   totalMinutes: number;
  *   primaryDomain?: PracticeName;
  *   horizonDays?: number;
+ *   qualityPolicyIdRequested?: string;
+ *   qualityPolicyIdUsed?: string;
+ *   policySelectionDecision?: any;
+ *   policySelectionReasonCodes?: string[];
+ *   policySelectionSignalsSnapshot?: any;
+ *   qualityScoreBaseline?: number;
+ *   qualityScoreBaselineByComponent?: Record<string, number>;
+ *   qualityScoreOptimized?: number;
+ *   qualityScoreOptimizedByComponent?: Record<string, number>;
+ *   qualityImprovementDelta?: number;
+ *   optimizerRejectedCandidatesSummary?: Record<string, number>;
  * }} PlanPreview
  */
 

@@ -26,7 +26,7 @@ import { summarizeCycle } from './cycleSummary.ts';
 import { computeProfileLearning } from './learning.ts';
 import { computeTerminalConvergence } from './convergenceTerminal.ts';
 import { rolloverAtMidnight, shouldRollover } from '../core/engine/rollover.ts';
-import { buildDraftScheduleItems } from './draftSchedule.js';
+import { buildDraftScheduleItems, buildPolicyAndQualityDiagnostics } from './draftSchedule.js';
 
 /**
  * @typedef {import('./identityTypes.js').IdentityState} IdentityState
@@ -346,7 +346,9 @@ export function computeDerivedState(state, action) {
     next.planPreview = computePlanPreview({
       suggestedBlocks: next.suggestedBlocks,
       planDraft: next.planDraft,
-      contract: next.goalExecutionContract
+      contract: next.goalExecutionContract,
+      policyState: getCurrentPolicyState(next),
+      timeZone: next.appTime?.timeZone || APP_TIME_ZONE,
     });
   }
   next.correctionSignals = computeCorrectionSignals(next, 14);
@@ -949,6 +951,12 @@ function enforceSafeDefaults(state) {
   ensureCycleStructures(state);
   if (!('goalExecutionContract' in state)) state.goalExecutionContract = null;
   if (!('planDraft' in state)) state.planDraft = null;
+  if (state.planDraft) {
+    if (!state.planDraft.qualityPolicyId) state.planDraft.qualityPolicyId = 'BALANCED';
+    if (typeof state.planDraft.autoPolicySelection !== 'boolean') state.planDraft.autoPolicySelection = false;
+    if (!Number.isFinite(state.planDraft.minPolicyHoldDays)) state.planDraft.minPolicyHoldDays = 7;
+    if (typeof state.planDraft.enableQualityOptimizer !== 'boolean') state.planDraft.enableQualityOptimizer = false;
+  }
   if (!state.planCalibration) state.planCalibration = { confidence: 0, assumptions: [], missingInfo: [] };
   if (!('planPreview' in state)) state.planPreview = null;
   if (!('correctionSignals' in state)) state.correctionSignals = null;
@@ -2374,16 +2382,39 @@ function buildSuggestedBlocks({
   });
 }
 
-function computePlanPreview({ suggestedBlocks = [], planDraft = null, contract = null } = {}) {
+function computePlanPreview({ suggestedBlocks = [], planDraft = null, contract = null, policyState = null, timeZone = 'UTC' } = {}) {
   const onlySuggested = (suggestedBlocks || []).filter((s) => s && s.status === 'suggested');
   const totalBlocks = onlySuggested.length;
   const totalMinutes = onlySuggested.reduce((sum, s) => sum + (s.durationMinutes || 0), 0);
+  const quality = buildPolicyAndQualityDiagnostics({
+    suggestedBlocks,
+    planDraft,
+    contract,
+    policyState,
+    timeZone,
+  });
   return {
     totalBlocks,
     totalMinutes,
     primaryDomain: planDraft?.primaryDomain,
-    horizonDays: contract?.horizonDays
+    horizonDays: contract?.horizonDays,
+    qualityPolicyIdRequested: quality.qualityPolicyIdRequested,
+    qualityPolicyIdUsed: quality.qualityPolicyIdUsed,
+    policySelectionDecision: quality.policySelectionDecision,
+    policySelectionReasonCodes: quality.policySelectionReasonCodes,
+    policySelectionSignalsSnapshot: quality.policySelectionSignalsSnapshot,
+    qualityScoreBaseline: quality.qualityScoreBaseline,
+    qualityScoreBaselineByComponent: quality.qualityScoreBaselineByComponent,
+    qualityScoreOptimized: quality.qualityScoreOptimized,
+    qualityScoreOptimizedByComponent: quality.qualityScoreOptimizedByComponent,
+    qualityImprovementDelta: quality.qualityImprovementDelta,
+    optimizerRejectedCandidatesSummary: quality.optimizerRejectedCandidatesSummary,
   };
+}
+
+function getCurrentPolicyState(state) {
+  const cycle = getActiveCycle(state);
+  return cycle?.policyState || null;
 }
 
 export function rehydrateSuggestionRejections(suggestions = [], events = []) {
@@ -2679,7 +2710,11 @@ function applyOnboardingInputs(state, onboarding = {}) {
     templates,
     successDefinition,
     horizonDays,
-    daysPerWeek
+    daysPerWeek,
+    qualityPolicyId: 'BALANCED',
+    autoPolicySelection: false,
+    minPolicyHoldDays: 7,
+    enableQualityOptimizer: false,
   };
 
   const suggested = buildSuggestedBlocks({
@@ -2713,7 +2748,9 @@ function applyOnboardingInputs(state, onboarding = {}) {
   state.planPreview = computePlanPreview({
     suggestedBlocks: state.suggestedBlocks,
     planDraft: state.planDraft,
-    contract: state.goalExecutionContract
+    contract: state.goalExecutionContract,
+    policyState: getCurrentPolicyState(state),
+    timeZone: state.appTime?.timeZone || APP_TIME_ZONE,
   });
   state.suggestionHistory = {
     dayKey: startDayKey,
@@ -2912,7 +2949,11 @@ function startNewCycle(state, payload = {}) {
     templates,
     successDefinition,
     horizonDays,
-    daysPerWeek
+    daysPerWeek,
+    qualityPolicyId: 'BALANCED',
+    autoPolicySelection: false,
+    minPolicyHoldDays: 7,
+    enableQualityOptimizer: false,
   };
 
   const suggested = buildSuggestedBlocks({
@@ -2946,7 +2987,9 @@ function startNewCycle(state, payload = {}) {
   state.planPreview = computePlanPreview({
     suggestedBlocks: state.suggestedBlocks,
     planDraft: state.planDraft,
-    contract: state.goalExecutionContract
+    contract: state.goalExecutionContract,
+    policyState: getCurrentPolicyState(state),
+    timeZone: state.appTime?.timeZone || APP_TIME_ZONE,
   });
 
   state.executionEvents = [];
@@ -3244,7 +3287,9 @@ function generatePlan(state) {
   state.planPreview = computePlanPreview({
     suggestedBlocks: state.suggestedBlocks,
     planDraft: state.planDraft,
-    contract: state.goalExecutionContract
+    contract: state.goalExecutionContract,
+    policyState: getCurrentPolicyState(state),
+    timeZone: state.appTime?.timeZone || APP_TIME_ZONE,
   });
   state.cyclesById[cycle.id] = cycle;
 }
@@ -3309,6 +3354,8 @@ function applyDraftSchedule(state) {
   const cycle = getActiveCycle(state);
   const contract = cycle?.goalContract || state.goalExecutionContract;
   if (!cycle || !contract) return;
+  const nowDay = state.appTime?.activeDayKey || state.today?.date || nowDayKey(state.appTime?.timeZone || APP_TIME_ZONE);
+  const previewDecisionBeforeApply = state.planPreview?.policySelectionDecision || null;
   const suggestedBlocks = state.suggestedBlocks || [];
   const forecastByDay = (cycle?.coldPlan?.forecastByDayKey || {}) || {};
   const routeSuggestions = Object.keys(forecastByDay || {})
@@ -3323,6 +3370,13 @@ function applyDraftSchedule(state) {
     })
     .filter((entry) => entry.totalBlocks > 0);
   const timeZone = state.appTime?.timeZone || 'UTC';
+  const appliedPreview = computePlanPreview({
+    suggestedBlocks,
+    planDraft: state.planDraft,
+    contract: state.goalExecutionContract,
+    policyState: cycle.policyState || null,
+    timeZone,
+  });
   const draftItems = buildDraftScheduleItems({
     suggestedBlocks,
     routeSuggestions,
@@ -3352,6 +3406,37 @@ function applyDraftSchedule(state) {
       criterionId: item.payload?.criterionId
     });
   });
+  const appliedPolicyId = appliedPreview.qualityPolicyIdUsed || 'BALANCED';
+  const priorState = cycle.policyState || null;
+  const changedPolicy = priorState?.currentPolicyId !== appliedPolicyId;
+  const policySetAtDayKey = changedPolicy ? nowDay : priorState?.policySetAtDayKey || nowDay;
+  const policyAgeDays = Math.max(0, daysBetween(policySetAtDayKey, nowDay));
+  cycle.policyState = {
+    currentPolicyId: appliedPolicyId,
+    policySetAtDayKey,
+    policyAgeDays,
+    priorSignalsSnapshot: appliedPreview.policySelectionSignalsSnapshot || priorState?.priorSignalsSnapshot || null,
+  };
+  state.qualityPolicyIdApplied = appliedPolicyId;
+  state.policySelectionDecisionApplied = appliedPreview.policySelectionDecision || null;
+  state.policySelectionReasonCodesApplied = [...(appliedPreview.policySelectionReasonCodes || [])];
+  const previewPolicyId = state.planPreview?.qualityPolicyIdUsed || null;
+  const previewReasonCodes = JSON.stringify(state.planPreview?.policySelectionReasonCodes || []);
+  const appliedReasonCodes = JSON.stringify(appliedPreview.policySelectionReasonCodes || []);
+  state.policySelectionParity = Boolean(previewPolicyId && previewPolicyId === appliedPolicyId && previewReasonCodes === appliedReasonCodes);
+  state.planEvents = state.planEvents || [];
+  state.planEvents.push({
+    id: `draft-policy-applied-${cycle.id}-${Date.now()}`,
+    type: 'DRAFT_POLICY_APPLIED',
+    cycleId: cycle.id,
+    goalId: contract.goalId,
+    dayKey: nowDay,
+    qualityPolicyIdApplied: appliedPolicyId,
+    previewPolicyIdUsed: previewPolicyId,
+    policySelectionParity: state.policySelectionParity,
+    reasonCodes: appliedPreview.policySelectionReasonCodes || [],
+    atISO: state.appTime?.nowISO || new Date().toISOString(),
+  });
   state.draftScheduleAppliedAtISO = state.appTime?.nowISO || new Date().toISOString();
   state.suggestedBlocks = [];
   state.suggestionEvents = [];
@@ -3359,6 +3444,8 @@ function applyDraftSchedule(state) {
   state.planPreview = null;
   cycle.autoAsanaPlan = null;
   cycle.coldPlan = { forecastByDayKey: {}, dailyProjection: { forecastByDayKey: {} } };
+  cycle.lastPolicySelectionDecision = previewDecisionBeforeApply || appliedPreview.policySelectionDecision || null;
+  state.cyclesById[cycle.id] = cycle;
 }
 
 function setDefiniteGoal(state, payload = {}) {
@@ -3572,7 +3659,9 @@ function acceptSuggestedBlock(state, proposalId) {
   state.planPreview = computePlanPreview({
     suggestedBlocks: state.suggestedBlocks,
     planDraft: state.planDraft,
-    contract: state.goalExecutionContract
+    contract: state.goalExecutionContract,
+    policyState: getCurrentPolicyState(state),
+    timeZone: state.appTime?.timeZone || APP_TIME_ZONE,
   });
 }
 
@@ -3641,7 +3730,9 @@ function applyCalibrationDays(state, daysPerWeek, uncertain = false) {
   state.planPreview = computePlanPreview({
     suggestedBlocks: state.suggestedBlocks,
     planDraft: state.planDraft,
-    contract: state.goalExecutionContract
+    contract: state.goalExecutionContract,
+    policyState: getCurrentPolicyState(state),
+    timeZone: state.appTime?.timeZone || APP_TIME_ZONE,
   });
 
   state.calibrationEvents = state.calibrationEvents || [];
@@ -3681,7 +3772,9 @@ function rejectSuggestedBlock(state, proposalId, reason) {
   state.planPreview = computePlanPreview({
     suggestedBlocks: state.suggestedBlocks,
     planDraft: state.planDraft,
-    contract: state.goalExecutionContract
+    contract: state.goalExecutionContract,
+    policyState: getCurrentPolicyState(state),
+    timeZone: state.appTime?.timeZone || APP_TIME_ZONE,
   });
 }
 
@@ -3704,7 +3797,9 @@ function ignoreSuggestedBlock(state, proposalId) {
   state.planPreview = computePlanPreview({
     suggestedBlocks: state.suggestedBlocks,
     planDraft: state.planDraft,
-    contract: state.goalExecutionContract
+    contract: state.goalExecutionContract,
+    policyState: getCurrentPolicyState(state),
+    timeZone: state.appTime?.timeZone || APP_TIME_ZONE,
   });
 }
 
@@ -3727,7 +3822,9 @@ function dismissSuggestedBlock(state, proposalId) {
   state.planPreview = computePlanPreview({
     suggestedBlocks: state.suggestedBlocks,
     planDraft: state.planDraft,
-    contract: state.goalExecutionContract
+    contract: state.goalExecutionContract,
+    policyState: getCurrentPolicyState(state),
+    timeZone: state.appTime?.timeZone || APP_TIME_ZONE,
   });
 }
 

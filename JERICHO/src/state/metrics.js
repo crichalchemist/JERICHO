@@ -161,6 +161,27 @@ export function groupPracticeLoad(blocks = []) {
   );
 }
 
+export function computePolicySelectionMetrics({ preview = null, applied = null } = {}) {
+  const selectedQualityPolicyId = preview?.qualityPolicyIdUsed || applied?.qualityPolicyIdApplied || 'BALANCED';
+  const previewReasonCodes = Array.isArray(preview?.policySelectionReasonCodes) ? preview.policySelectionReasonCodes : [];
+  const appliedReasonCodes = Array.isArray(applied?.policySelectionReasonCodesApplied) ? applied.policySelectionReasonCodesApplied : [];
+  const previewCodesJson = JSON.stringify(previewReasonCodes);
+  const appliedCodesJson = JSON.stringify(appliedReasonCodes);
+  return {
+    selectedQualityPolicyId,
+    policySelectionChanged: Boolean(
+      preview?.policySelectionDecision?.hysteresis?.changed || applied?.policySelectionDecisionApplied?.hysteresis?.changed
+    ),
+    policySelectionReasonCodes: [...(previewReasonCodes.length ? previewReasonCodes : appliedReasonCodes)],
+    policySelectionParity: Boolean(
+      preview?.qualityPolicyIdUsed &&
+        applied?.qualityPolicyIdApplied &&
+        preview.qualityPolicyIdUsed === applied.qualityPolicyIdApplied &&
+        previewCodesJson === appliedCodesJson
+    ),
+  };
+}
+
 function dayDiff(startDayKey, endDayKeyExclusive) {
   const s = new Date(`${startDayKey}T00:00:00.000Z`).getTime();
   const e = new Date(`${endDayKeyExclusive}T00:00:00.000Z`).getTime();
