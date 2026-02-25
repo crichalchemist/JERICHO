@@ -140,6 +140,22 @@ describe('stress aggregate gate', () => {
       if (metricTargets.prescriptionsCount) {
         assertRange(run.metrics.prescriptionsCount, metricTargets.prescriptionsCount, summary);
       }
+      if (metricTargets.qualityScoreTotal) {
+        assertRange(run.metrics.qualityScoreTotal, metricTargets.qualityScoreTotal, summary);
+      }
+      if (metricTargets.contextSwitchCount) {
+        assertRange(run.metrics.contextSwitchCount, metricTargets.contextSwitchCount, summary);
+      }
+      if (metricTargets.dailyLoadStdDev) {
+        assertRange(run.metrics.dailyLoadStdDev, metricTargets.dailyLoadStdDev, summary);
+      }
+      if (metricTargets.milestoneAtRiskCount) {
+        assertRange(run.metrics.milestoneAtRiskCount, metricTargets.milestoneAtRiskCount, summary);
+      }
+      if (metricTargets.depTightCount) {
+        assertRange(run.metrics.depTightCount, metricTargets.depTightCount, summary);
+      }
+      expect(run.metrics.qualityScoreParity, summary).toBe(true);
       if (targets.prescriptions?.primaryConstraint) {
         expect(run.metrics.prescriptionsPrimaryConstraint, summary).toBe(targets.prescriptions.primaryConstraint);
       }

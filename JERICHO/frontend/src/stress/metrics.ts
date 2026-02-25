@@ -1,5 +1,6 @@
 import { dayKeyFromISO } from '../state/time/time.ts';
 import { computePrescriptions, type PrescriptionsBundle } from '../domain/prescriptions.ts';
+import { scoreSchedule } from '../planner/scoring/scoreSchedule.ts';
 import type { StressAction, StressScenarioFixture } from './fixturesLoader.ts';
 
 export type PlacementLike = {
@@ -54,6 +55,22 @@ export type StressMetrics = {
   depBufferBlockedByMilestone: Record<string, number>;
   outsideExecutionHorizonCount: number;
   outsideExecutionHorizonEstimateMinTotal: number;
+  qualityScoreTotal: number;
+  qualityScoreByComponent: {
+    deadlineRisk: number;
+    milestoneRisk: number;
+    dependencyRisk: number;
+    contextSwitching: number;
+    loadSmoothness: number;
+    deferralPenalty: number;
+  };
+  qualityScorePreview: number;
+  qualityScoreApplied: number;
+  qualityScoreParity: boolean;
+  contextSwitchCount: number;
+  dailyLoadStdDev: number;
+  milestoneAtRiskCount: number;
+  depTightCount: number;
   milestonePlacedRatio: {
     min: number;
     avg: number;
@@ -247,6 +264,31 @@ function aggregateByAction(placements: NormalizedPlacement[] = []) {
     rows.sort((a, b) => a.startISO.localeCompare(b.startISO));
   });
   return byAction;
+}
+
+function toScoreAssignments(placements: NormalizedPlacement[], actionById: Map<string, StressAction>) {
+  return placements
+    .filter((placement) => placement.actionId)
+    .map((placement, index) => ({
+      actionId: placement.actionId as string,
+      chunkIndex: index,
+      chunkCount: 1,
+      dayKey: placement.dayKey,
+      startMin: (() => {
+        const at = Date.parse(placement.startISO);
+        if (!Number.isFinite(at)) return 0;
+        const date = new Date(at);
+        return date.getUTCHours() * 60 + date.getUTCMinutes();
+      })(),
+      durationMin: Math.max(1, placement.minutes || 30),
+      category: actionById.get(placement.actionId as string)?.category || 'UNKNOWN'
+    }))
+    .sort((a, b) => {
+      if (a.dayKey !== b.dayKey) return a.dayKey.localeCompare(b.dayKey);
+      if (a.startMin !== b.startMin) return a.startMin - b.startMin;
+      return a.actionId.localeCompare(b.actionId);
+    })
+    .map((assignment, idx) => ({ ...assignment, chunkIndex: idx }));
 }
 
 function computeDepViolations(
@@ -636,6 +678,7 @@ export function computeStressMetrics({
     return sum + Math.max(0, Number(block.minutes) || 0);
   }, 0);
   const estimateById = new Map(actions.map((action) => [action.id, Math.max(0, Number(action.estimateMin) || 0)]));
+  const actionById = new Map(actions.map((action) => [action.id, action]));
   const estimateTotalMinAll = actions.reduce((sum, action) => sum + (estimateById.get(action.id) || 0), 0);
   const estimateTotalMinPlaced = Array.from(placedActionIds).reduce((sum, actionId) => {
     return sum + (estimateById.get(actionId as string) || 0);
@@ -765,6 +808,49 @@ export function computeStressMetrics({
   });
   const slotLeak = computeUniformSlotLeak(actions, materializedBlocks);
   const capacity = computeCapacityOverages(fixture, materializedBlocks);
+  const normalizedPreview = previewItems
+    .map((item, index) => normalizePlacement(item, index))
+    .filter(Boolean) as NormalizedPlacement[];
+  const scoreInputsShared = {
+    actionGraph: { actions },
+    constraints: {
+      maxScheduledMinutesPerDay: fixture.realismConstraints?.maxScheduledMinutesPerDay,
+      maxScheduledMinutesPerWeek: fixture.realismConstraints?.maxScheduledMinutesPerWeek,
+      executionHorizonDays:
+        Number((diagnostics as any)?.executionHorizonDays) ||
+        Math.max(1, dayDiffInclusive(fixture.horizon.startDayKey, fixture.horizon.endDayKey))
+    },
+    horizons: {
+      executionWindowStartDayKey:
+        dayKeyFromISO(String((diagnostics as any)?.executionWindowStartISO || ''), 'UTC') || fixture.horizon.startDayKey,
+      executionWindowEndDayKey:
+        dayKeyFromISO(String((diagnostics as any)?.executionWindowEndISO || ''), 'UTC') || fixture.horizon.endDayKey,
+      feasibilityWindowEndDayKey:
+        dayKeyFromISO(String((diagnostics as any)?.feasibilityWindowEndISO || ''), 'UTC') || fixture.horizon.endDayKey
+    },
+    milestones: (fixture.milestones || []).map((milestone) => ({
+      milestoneId: milestone.id,
+      windowStartDayKey: milestone.windowStartDayKey,
+      windowEndDayKey: milestone.windowEndDayKey,
+      checkpointActionIds: milestone.checkpointActionIds || [],
+      actionIds: milestone.actionIds || []
+    })),
+    metricsContext: {
+      milestoneWindowSlack,
+      unplacedEstimateMinTotal,
+      outsideExecutionHorizonEstimateMinTotal,
+      outsideExecutionHorizonCount
+    }
+  };
+  const qualityPreview = scoreSchedule({
+    ...scoreInputsShared,
+    assignments: toScoreAssignments(normalizedPreview, actionById)
+  });
+  const qualityApplied = scoreSchedule({
+    ...scoreInputsShared,
+    assignments: toScoreAssignments(normalizedMaterialized, actionById)
+  });
+  const qualityScoreParity = qualityPreview.total === qualityApplied.total;
 
   return {
     actionCount,
@@ -806,6 +892,15 @@ export function computeStressMetrics({
     depBufferBlockedByMilestone,
     outsideExecutionHorizonCount,
     outsideExecutionHorizonEstimateMinTotal,
+    qualityScoreTotal: qualityApplied.total,
+    qualityScoreByComponent: qualityApplied.components,
+    qualityScorePreview: qualityPreview.total,
+    qualityScoreApplied: qualityApplied.total,
+    qualityScoreParity,
+    contextSwitchCount: Number(qualityApplied.evidence.contextSwitchCount || 0),
+    dailyLoadStdDev: Number(qualityApplied.evidence.dailyLoadStdDev || 0),
+    milestoneAtRiskCount: Number(qualityApplied.evidence.milestoneAtRiskCount || 0),
+    depTightCount: Number(qualityApplied.evidence.depTightCount || 0),
     milestonePlacedRatio,
     milestoneWindowSlack,
     uniformSlotAssumptionLeak: slotLeak,

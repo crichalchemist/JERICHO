@@ -170,4 +170,22 @@ describe('stress strategic signal scenarios', () => {
     expect(medium.metrics.capacityOverageDaysCount).toBeLessThanOrEqual(short.metrics.capacityOverageDaysCount);
     expect(long.metrics.capacityOverageDaysCount).toBeLessThanOrEqual(medium.metrics.capacityOverageDaysCount);
   });
+
+  it('optimizer flag does not worsen quality score and keeps churn bounded', () => {
+    const baseline = runStressScenario('doctor_10y', { writeReport: false });
+    const optimized = runStressScenario('doctor_10y', {
+      writeReport: false,
+      scenarioOverride: {
+        planDraft: {
+          ...(loadStressScenario('doctor_10y').planDraft || {}),
+          executionHorizonDays: 90,
+          enableQualityOptimizer: true,
+          optimizerMaxIterations: 2,
+          optimizerMaxCandidates: 30
+        }
+      }
+    });
+    expect(optimized.metrics.qualityScoreTotal).toBeLessThanOrEqual(baseline.metrics.qualityScoreTotal + 1e-9);
+    expect(optimized.metrics.churnIndex).toBeLessThanOrEqual(Math.max(0.4, baseline.metrics.churnIndex + 0.1));
+  });
 });

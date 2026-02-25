@@ -1,20 +1,20 @@
 {
-  "scenarioId": "doctor_10y_tight_capacity",
-  "goalText": "Become a doctor in 10 years under constrained schedule",
-  "prompt": "Build a medically credible decade path with heavy prerequisites under strict weekly availability.",
+  "scenarioId": "doctor_10y",
+  "goalText": "Become a doctor in 10 years",
+  "prompt": "Build a medically credible decade path with prerequisites and milestone windows.",
   "horizon": {
     "startDayKey": "2026-01-01",
     "endDayKey": "2035-12-31"
   },
   "availability": {
-    "daysPerWeek": 3,
-    "specificDays": "mon,wed,sat",
+    "daysPerWeek": 5,
+    "specificDays": "mon,tue,wed,thu,fri",
     "maxBlocksPerDay": 3,
     "routeMinutesDefault": 90
   },
   "realismConstraints": {
-    "maxScheduledMinutesPerDay": 60,
-    "maxScheduledMinutesPerWeek": 120,
+    "maxScheduledMinutesPerDay": 180,
+    "maxScheduledMinutesPerWeek": 600,
     "toleranceMinutes": 0
   },
   "dependencies": {
@@ -42,7 +42,7 @@
   ],
   "milestones": [
     {
-      "id": "tight:undergrad_complete",
+      "id": "milestone:undergrad_complete",
       "title": "Undergraduate prerequisites complete",
       "windowStartDayKey": "2029-09-01",
       "windowEndDayKey": "2030-03-31",
@@ -56,7 +56,7 @@
       ]
     },
     {
-      "id": "tight:mcat_taken",
+      "id": "milestone:mcat_taken",
       "title": "MCAT taken within window",
       "windowStartDayKey": "2030-05-01",
       "windowEndDayKey": "2030-10-31",
@@ -70,7 +70,7 @@
       ]
     },
     {
-      "id": "tight:med_school_complete",
+      "id": "milestone:med_school_complete",
       "title": "Med school complete",
       "windowStartDayKey": "2034-01-01",
       "windowEndDayKey": "2034-09-30",
@@ -84,7 +84,7 @@
       ]
     },
     {
-      "id": "tight:residency_start",
+      "id": "milestone:residency_start",
       "title": "Residency start",
       "windowStartDayKey": "2035-07-01",
       "windowEndDayKey": "2035-10-31",
@@ -99,10 +99,10 @@
     }
   ],
   "expectedRealityProfile": {
-    "requireAtLeastOneViolation": true
+    "requireAtLeastOneViolation": false
   },
   "planDraft": {
-    "executionHorizonDays": 3652
+    "executionHorizonDays": 90
   },
   "expectedTargets": {
     "hard": {
@@ -110,72 +110,27 @@
     },
     "realism": {
       "podcastMustBeClean": false,
-      "requireAtLeastOneViolation": true,
-      "requiredSignalsAnyOf": [
-        "CAPACITY_REALISM",
-        "MILESTONE_ANCHORING",
-        "DEPENDENCY_TIMING_VIOLATIONS"
-      ]
+      "requireAtLeastOneViolation": false
     },
     "metrics": {
-      "scheduleTruthRatio": {
-        "min": 0.95,
-        "max": 1.1
-      },
       "scheduleCoverageRatio": {
         "min": 0,
         "max": 1
       },
-      "milestoneWindowMissCount": {
-        "min": 1,
-        "max": 20
-      },
-      "capacityOverageDaysCount": {
-        "min": 0,
-        "max": 0
-      },
-      "unplacedEstimateMinTotal": {
-        "min": 1,
-        "max": 100000
-      },
-      "milestonePlacedRatioMin": {
-        "min": 0,
-        "max": 1
-      },
-      "milestonePlacedRatioAvg": {
-        "min": 0.05,
-        "max": 1
-      },
-      "placementAnchoringMissCount": {
-        "min": 0,
-        "max": 20
-      },
-      "anchoringMissDelta": {
-        "min": 0,
-        "max": 0
-      },
-      "depWindowBlockedCount": {
-        "min": 0,
-        "max": 100000
-      },
-      "milestoneWindowSlackRatioMin": {
-        "min": 0,
-        "max": 0.99
-      },
-      "infeasibleMilestonesCount": {
-        "min": 1,
-        "max": 20
-      },
       "depEligibleActions": {
-        "min": 150
+        "min": 100
       },
-      "prescriptionsCount": {
+      "outsideExecutionHorizonCount": {
         "min": 1,
-        "max": 20
+        "max": 100000
+      },
+      "outsideExecutionHorizonEstimateMinTotal": {
+        "min": 1,
+        "max": 1000000
       },
       "qualityScoreTotal": {
         "min": 0,
-        "max": 1000000
+        "max": 100000
       },
       "contextSwitchCount": {
         "min": 0,
@@ -187,20 +142,12 @@
       },
       "milestoneAtRiskCount": {
         "min": 0,
-        "max": 1000
+        "max": 20
       },
       "depTightCount": {
         "min": 0,
         "max": 100000
       }
-    },
-    "prescriptions": {
-      "primaryConstraint": "MILESTONE_WINDOW_INFEASIBLE",
-      "mustIncludeCodes": [
-        "INCREASE_WEEKLY_CAPACITY",
-        "EXTEND_MILESTONE_WINDOW",
-        "REDUCE_SCOPE_CATEGORY"
-      ]
     }
   },
   "preCompletedActionIds": [

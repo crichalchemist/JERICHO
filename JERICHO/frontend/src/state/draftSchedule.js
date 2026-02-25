@@ -14,6 +14,8 @@ import {
 } from './plannerConfig.ts';
 import { getSpineBoundary } from './spineBoundary.ts';
 import { computePrescriptions } from '../domain/prescriptions.ts';
+import { scoreSchedule } from '../planner/scoring/scoreSchedule.ts';
+import { optimizeSchedule } from '../planner/optimize/optimizeSchedule.ts';
 
 const ensureISO = (dayKey, time = '09:00') => {
   if (!dayKey) return null;
@@ -1099,6 +1101,77 @@ function intervalOverlaps(startTs, endTs, intervals = []) {
   return (intervals || []).some((interval) => startTs < interval.endTs && endTs > interval.startTs);
 }
 
+function toScoreAssignments(assignments = []) {
+  return (assignments || [])
+    .map((row) => {
+      const dayKey = row?.slot?.dayKey || row?.slot?.dateISO || null;
+      const startISO = row?.slot?.startISO || null;
+      const startMin =
+        Number.isFinite(row?.slot?.startMin) ? Number(row.slot.startMin) : minutesFromISO(startISO || '') || 0;
+      const durationMin = Math.max(
+        1,
+        Number(row?.allocatedMin || row?.slot?.minutes || row?.durationMin || 30)
+      );
+      if (!row?.action?.id || !dayKey) return null;
+      return {
+        actionId: row.action.id,
+        chunkIndex: Number(row?.chunkIndex || 0),
+        chunkCount: Number(row?.chunkCount || 1),
+        dayKey,
+        startMin,
+        durationMin,
+        category: row?.action?.category || null
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      if (a.dayKey !== b.dayKey) return a.dayKey.localeCompare(b.dayKey);
+      if (a.startMin !== b.startMin) return a.startMin - b.startMin;
+      if (a.actionId !== b.actionId) return a.actionId.localeCompare(b.actionId);
+      return a.chunkIndex - b.chunkIndex;
+    });
+}
+
+function buildQualityMetricsContext(stats = {}) {
+  return {
+    milestoneWindowSlack: null,
+    unplacedEstimateMinTotal: Number(stats?.unplacedEstimateMinTotal || 0),
+    outsideExecutionHorizonEstimateMinTotal: Number(stats?.outsideExecutionHorizonEstimateMinTotal || 0),
+    outsideExecutionHorizonCount: Number(stats?.outsideExecutionHorizonCount || 0)
+  };
+}
+
+function applyOptimizedAssignmentsToRows(rows = [], optimizedAssignments = []) {
+  const byKey = new Map(
+    (optimizedAssignments || []).map((assignment) => [
+      `${assignment.actionId}::${Number(assignment.chunkIndex || 0)}`,
+      assignment
+    ])
+  );
+  return (rows || []).map((row) => {
+    const key = `${row?.action?.id || ''}::${Number(row?.chunkIndex || 0)}`;
+    const optimized = byKey.get(key);
+    if (!optimized) return row;
+    const startISO = ensureISO(optimized.dayKey, formatMinutes(Math.max(0, Number(optimized.startMin) || 0)));
+    const durationMin = Math.max(1, Number(optimized.durationMin || row?.allocatedMin || row?.slot?.minutes || 30));
+    const endISO = new Date(Date.parse(startISO) + durationMin * 60000).toISOString();
+    return {
+      ...row,
+      allocatedMin: durationMin,
+      slot: {
+        ...(row?.slot || {}),
+        dayKey: optimized.dayKey,
+        dateISO: optimized.dayKey,
+        startMin: optimized.startMin,
+        endMin: optimized.startMin + durationMin,
+        startISO,
+        endISO,
+        minutes: durationMin
+      }
+    };
+  });
+}
+
 function addIntervalByDay(intervalsByDay, dayKey, startTs, endTs, metadata = null) {
   if (!dayKey || !Number.isFinite(startTs) || !Number.isFinite(endTs) || endTs <= startTs) return;
   if (!intervalsByDay.has(dayKey)) intervalsByDay.set(dayKey, []);
@@ -1879,6 +1952,10 @@ export function getDraftDiagnostics({
   milestoneWindowConstraintMode = null,
   horizonMode = null,
   softWindowFallbackCount = null,
+  qualityScoreBaseline = null,
+  qualityScoreOptimized = null,
+  qualityImprovementDelta = null,
+  chosenMovesSummary = null,
   startDateISO = null,
   deadlineISO = null,
   maxBlocksPerDay = MAX_BLOCKS_PER_DAY,
@@ -2059,6 +2136,23 @@ export function getDraftDiagnostics({
   const resolvedSoftWindowFallbackCount = Number.isFinite(softWindowFallbackCount)
     ? Math.max(0, Number(softWindowFallbackCount))
     : 0;
+  const resolvedQualityScoreBaseline =
+    qualityScoreBaseline && typeof qualityScoreBaseline === 'object' ? { ...qualityScoreBaseline } : null;
+  const resolvedQualityScoreOptimized =
+    qualityScoreOptimized && typeof qualityScoreOptimized === 'object' ? { ...qualityScoreOptimized } : resolvedQualityScoreBaseline;
+  const resolvedQualityImprovementDelta = Number.isFinite(qualityImprovementDelta)
+    ? Number(qualityImprovementDelta)
+    : Number(
+        ((resolvedQualityScoreOptimized?.total || 0) - (resolvedQualityScoreBaseline?.total || 0)).toFixed(6)
+      );
+  const resolvedChosenMovesSummary =
+    chosenMovesSummary && typeof chosenMovesSummary === 'object'
+      ? {
+          iterations: Math.max(0, Number(chosenMovesSummary.iterations || 0)),
+          candidatesEvaluated: Math.max(0, Number(chosenMovesSummary.candidatesEvaluated || 0)),
+          moves: Array.isArray(chosenMovesSummary.moves) ? [...chosenMovesSummary.moves] : []
+        }
+      : { iterations: 0, candidatesEvaluated: 0, moves: [] };
   const maxScheduledMinutesPerWeek = Number(state?.constraints?.maxScheduledMinutesPerWeek);
   const resolvedMaxScheduledMinutesPerWeek = Number.isFinite(maxScheduledMinutesPerWeek)
     ? Math.max(1, Number(maxScheduledMinutesPerWeek))
@@ -2182,6 +2276,10 @@ export function getDraftDiagnostics({
     milestoneWindowConstraintMode: resolvedMilestoneWindowConstraintMode,
     horizonMode: resolvedHorizonMode,
     softWindowFallbackCount: resolvedSoftWindowFallbackCount,
+    qualityScoreBaseline: resolvedQualityScoreBaseline,
+    qualityScoreOptimized: resolvedQualityScoreOptimized,
+    qualityImprovementDelta: resolvedQualityImprovementDelta,
+    chosenMovesSummary: resolvedChosenMovesSummary,
     prescriptions,
     routeSlotWindowDays: resolvedPlacementHorizonDays,
     routeSlotsCount: effectiveRequestedSlots
@@ -2410,8 +2508,86 @@ export function buildDraftScheduleItems(state, cycleId, options = {}) {
       executionEndDayKey,
       strategicComparator
     });
-    const assignmentExecution = stickyExecution.assignment;
+    let assignmentExecution = stickyExecution.assignment;
     const stickyStats = stickyExecution.stickyStats;
+
+    const qualityScoreInputs = {
+      actionGraph: { actions: planningActions },
+      constraints: {
+        maxScheduledMinutesPerDay,
+        maxScheduledMinutesPerWeek,
+        executionHorizonDays: resolvedExecutionHorizonDays
+      },
+      horizons: {
+        executionWindowStartDayKey: normalizedStartDayKey,
+        executionWindowEndDayKey: executionEndDayKey,
+        feasibilityWindowEndDayKey: placementEndDayKey
+      },
+      milestones: (milestones || []).map((milestone) => ({
+        milestoneId: milestone?.id || '',
+        windowStartDayKey: milestone?.windowStartDayKey,
+        windowEndDayKey: milestone?.windowEndDayKey,
+        checkpointActionIds: Array.isArray(milestone?.checkpointActionIds) ? milestone.checkpointActionIds : [],
+        actionIds: Array.isArray(milestone?.actionIds) ? milestone.actionIds : []
+      }))
+    };
+    const baselineScoreAssignments = toScoreAssignments(assignmentExecution.assignments || []);
+    let qualityScoreBaseline = scoreSchedule({
+      ...qualityScoreInputs,
+      assignments: baselineScoreAssignments,
+      metricsContext: buildQualityMetricsContext({
+        unplacedEstimateMinTotal: (assignmentFeasibility.unassignedActions || []).reduce(
+          (sum, action) => sum + resolveActionEstimateMin(action, slotDurationMin),
+          0
+        ),
+        outsideExecutionHorizonEstimateMinTotal: 0,
+        outsideExecutionHorizonCount: 0
+      })
+    });
+    const optimizerEnabled = Boolean(state?.planDraft?.enableQualityOptimizer);
+    let qualityScoreOptimized = qualityScoreBaseline;
+    let qualityImprovementDelta = 0;
+    let chosenMovesSummary = { iterations: 0, candidatesEvaluated: 0, moves: [] };
+    if (optimizerEnabled) {
+      const optimized = optimizeSchedule({
+        baselineAssignments: baselineScoreAssignments,
+        frozenReservations: (assignmentExecution.assignments || [])
+          .filter((row) => Boolean(row?.stickyPreserved))
+          .map((row) => ({
+            actionId: row?.action?.id,
+            chunkIndex: Number(row?.chunkIndex || 0)
+          }))
+          .filter((row) => Boolean(row.actionId)),
+        actionGraph: qualityScoreInputs.actionGraph,
+        constraints: qualityScoreInputs.constraints,
+        horizons: qualityScoreInputs.horizons,
+        milestones: qualityScoreInputs.milestones,
+        metricsContext: buildQualityMetricsContext({
+          unplacedEstimateMinTotal: (assignmentFeasibility.unassignedActions || []).reduce(
+            (sum, action) => sum + resolveActionEstimateMin(action, slotDurationMin),
+            0
+          ),
+          outsideExecutionHorizonEstimateMinTotal: 0,
+          outsideExecutionHorizonCount: 0
+        }),
+        actionConstraintsById,
+        dependencyBufferMinutes: defaultDependencyBufferMinutes,
+        maxIterations: Number(state?.planDraft?.optimizerMaxIterations || 2),
+        maxCandidatesPerIter: Number(state?.planDraft?.optimizerMaxCandidates || 30)
+      });
+      if (optimized.bestAssignments?.length) {
+        assignmentExecution = {
+          ...assignmentExecution,
+          assignments: applyOptimizedAssignmentsToRows(
+            assignmentExecution.assignments || [],
+            optimized.bestAssignments || []
+          )
+        };
+      }
+      qualityScoreOptimized = optimized.bestScore;
+      qualityImprovementDelta = Number(optimized.improvement?.deltaTotal || 0);
+      chosenMovesSummary = optimized.chosenMovesSummary || chosenMovesSummary;
+    }
 
     const feasibilityPlacedActionIds = new Set((assignmentFeasibility.assignments || []).map((row) => row?.action?.id).filter(Boolean));
     const executionPlacedActionIds = new Set((assignmentExecution.assignments || []).map((row) => row?.action?.id).filter(Boolean));
@@ -2433,6 +2609,29 @@ export function buildDraftScheduleItems(state, cycleId, options = {}) {
       acc[categoryKey] = (acc[categoryKey] || 0) + estimateMin;
       return acc;
     }, {});
+    qualityScoreBaseline = scoreSchedule({
+      ...qualityScoreInputs,
+      assignments: baselineScoreAssignments,
+      metricsContext: buildQualityMetricsContext({
+        unplacedEstimateMinTotal,
+        outsideExecutionHorizonEstimateMinTotal,
+        outsideExecutionHorizonCount: outsideExecutionHorizonActionIds.length
+      })
+    });
+    qualityScoreOptimized = scoreSchedule({
+      ...qualityScoreInputs,
+      assignments: toScoreAssignments(assignmentExecution.assignments || []),
+      metricsContext: buildQualityMetricsContext({
+        unplacedEstimateMinTotal,
+        outsideExecutionHorizonEstimateMinTotal,
+        outsideExecutionHorizonCount: outsideExecutionHorizonActionIds.length
+      })
+    });
+    if (optimizerEnabled) {
+      qualityImprovementDelta = Number((qualityScoreOptimized.total - qualityScoreBaseline.total).toFixed(6));
+    } else {
+      qualityImprovementDelta = 0;
+    }
     const depWindowBlockedByMilestone = {};
     const depBufferBlockedByMilestone = {};
     Object.entries(assignmentFeasibility.unassignedActionReasons || {}).forEach(([actionId, reason]) => {
@@ -2517,7 +2716,11 @@ export function buildDraftScheduleItems(state, cycleId, options = {}) {
       churnMovedMinutesTotal: stickyStats?.churnMovedMinutesTotal || 0,
       churnReasonsCount: stickyStats?.churnReasonsCount || {},
       rescheduleDecisions: stickyStats?.rescheduleDecisions || [],
-      reasonCode: placementReasonCode
+      reasonCode: placementReasonCode,
+      qualityScoreBaseline,
+      qualityScoreOptimized,
+      qualityImprovementDelta,
+      chosenMovesSummary
     };
     if (typeof captureStats === 'function') {
       captureStats(placementStats);

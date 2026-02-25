@@ -77,6 +77,11 @@ export type ExpectedTargets = {
     milestoneWindowSlackRatioMin?: ExpectedTargetRange;
     infeasibleMilestonesCount?: ExpectedTargetRange;
     prescriptionsCount?: ExpectedTargetRange;
+    qualityScoreTotal?: ExpectedTargetRange;
+    contextSwitchCount?: ExpectedTargetRange;
+    dailyLoadStdDev?: ExpectedTargetRange;
+    milestoneAtRiskCount?: ExpectedTargetRange;
+    depTightCount?: ExpectedTargetRange;
   };
   prescriptions?: {
     primaryConstraint?: string;
@@ -106,6 +111,9 @@ export type StressScenarioFixture = {
   expectedRealityProfile?: ExpectedRealityProfile;
   planDraft?: {
     executionHorizonDays?: number;
+    enableQualityOptimizer?: boolean;
+    optimizerMaxIterations?: number;
+    optimizerMaxCandidates?: number;
   };
   expectedTargets?: ExpectedTargets;
   inferredGraph: {
