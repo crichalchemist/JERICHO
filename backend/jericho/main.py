@@ -16,7 +16,8 @@ from jericho.constants import CORS_ALLOW_ORIGINS
 from jericho.db.client import create_db_client
 from jericho.llm.registry import load_registry
 from jericho.observability.tracing import setup_tracing
-from jericho.routers import ai, goals, health, identity, internal, pipeline, state, tasks, team
+from jericho.routers import ai, calendar, goals, health, identity, internal, pipeline, state, tasks, team
+from jericho.workers.scheduler import create_scheduler
 
 
 @asynccontextmanager
@@ -38,10 +39,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.db_client = await create_db_client(settings)
     else:
         app.state.db_client = None  # JSON adapter mode (Phase 0/1)
-    # Phase 4: start APScheduler nightly job here
+    # Phase 4: start APScheduler nightly rescheduler
+    scheduler = create_scheduler(app.state.db_client)
+    scheduler.start()
+    app.state.scheduler = scheduler
     app.state.settings = settings
     yield
     # Shutdown: stop scheduler, close DB connections
+    scheduler.shutdown(wait=False)
 
 
 def create_app() -> FastAPI:
@@ -66,6 +71,7 @@ def create_app() -> FastAPI:
     app.include_router(identity.router)
     app.include_router(tasks.router)
     app.include_router(pipeline.router)
+    app.include_router(calendar.router, prefix="/calendar")
     app.include_router(ai.router, prefix="/ai")
     app.include_router(team.router, prefix="/team")
     app.include_router(internal.router, prefix="/internal")

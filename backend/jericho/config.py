@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     jwt_secret: str = Field(default="changeme")
     credential_encryption_key: str = Field(default="")
 
+    # Google OAuth (Phase 3+)
+    google_client_id: str = Field(default="")
+    google_client_secret: str = Field(default="")
+    google_oauth_redirect_uri: str = Field(default="http://localhost:8000/calendar/google/callback")
+
     # OpenTelemetry (Phase 1+)
     # Empty string → console exporter (local dev). Set to OTLP endpoint in prod.
     otel_exporter_otlp_endpoint: str = Field(default="")

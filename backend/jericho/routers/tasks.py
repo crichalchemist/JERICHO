@@ -1,12 +1,55 @@
-from typing import Any
+from datetime import date
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from supabase import AsyncClient
 
+from jericho.db.deps import require_db_client
 from jericho.db.json_adapter import safe_read_state, write_state
+from jericho.db.repositories import tasks as tasks_repo
+from jericho.domain.state_machine import InvalidTransitionError, transition
+from jericho.domain.types import Task, TaskStatus
+from jericho.domain.viability import should_trigger_viability_pause
 
 router = APIRouter(tags=["tasks"])
+
+
+# ---------------------------------------------------------------------------
+# Helpers for Supabase-backed endpoints
+# ---------------------------------------------------------------------------
+
+def _to_domain_task(row: dict[str, Any]) -> Task:
+    return Task(
+        id=row["id"],
+        goal_id=row["goal_id"],
+        title=row["title"],
+        status=TaskStatus(row["status"]),
+        task_type=row["task_type"],
+        importance_tier=row["importance_tier"],
+        estimated_duration_minutes=row["estimated_duration_minutes"],
+        cognitive_load=float(row["cognitive_load"]),
+        deferral_count=int(row.get("deferral_count", 0)),
+        dependencies=tuple(row.get("dependencies") or []),
+        scheduled_date=(
+            date.fromisoformat(row["scheduled_date"]) if row.get("scheduled_date") else None
+        ),
+        deadline=(
+            date.fromisoformat(row["deadline"]) if row.get("deadline") else None
+        ),
+    )
+
+
+def _days_until_deadline(task_deadline: date | None) -> int | None:
+    if task_deadline is None:
+        return None
+    return (task_deadline - date.today()).days
+
+
+# ---------------------------------------------------------------------------
+# JSON-adapter routes (Phase 0 — preserved for frontend compatibility)
+# ---------------------------------------------------------------------------
 
 _VALID_STATUSES_FULL = {"completed", "missed", "pending"}
 _VALID_STATUSES_TERMINAL = {"completed", "missed"}
@@ -50,7 +93,7 @@ async def update_task(payload: TaskStatusUpdatePayload) -> JSONResponse:
 
 
 @router.post("/task-status")
-async def update_task_status(payload: TaskStatusPayload) -> JSONResponse:
+async def update_task_status_json(payload: TaskStatusPayload) -> JSONResponse:
     if payload.status not in _VALID_STATUSES_TERMINAL:
         raise HTTPException(
             status_code=400,
@@ -64,3 +107,86 @@ async def update_task_status(payload: TaskStatusPayload) -> JSONResponse:
     updated = _apply_task_status_to_state(result["state"], payload.taskId, payload.status)
     written = await write_state(updated)
     return JSONResponse({"state": written})
+
+
+# ---------------------------------------------------------------------------
+# Viability Pause — Supabase-backed (Phase 4)
+# ---------------------------------------------------------------------------
+
+_RESOLVE_TO_STATUS: dict[str, TaskStatus] = {
+    "decompose": TaskStatus.DECOMPOSED,
+    "extend": TaskStatus.DATE_EXTENDED,
+    "archive": TaskStatus.ARCHIVED,
+}
+
+_URGENCY_MESSAGES = {
+    "high": (
+        "This task has been deferred multiple times or has an approaching deadline. "
+        "Choose how to proceed: decompose it into smaller steps, extend its deadline, "
+        "or archive it."
+    ),
+    "low": (
+        "This task keeps getting pushed back with no deadline pressure. "
+        "Consider whether it still belongs on your list."
+    ),
+}
+
+
+class ViabilityResolvePayload(BaseModel):
+    instance_id: str
+    action: Literal["decompose", "extend", "archive"]
+
+
+@router.get("/tasks/{task_id}/viability-pause")
+async def check_viability_pause(
+    task_id: str,
+    instance_id: str,
+    db: Annotated[AsyncClient, Depends(require_db_client)],
+) -> dict[str, Any]:
+    """Return viability pause status + resolution options for a task."""
+    row = await tasks_repo.get_task(db, instance_id, task_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    task = _to_domain_task(row)
+    days_left = _days_until_deadline(task.deadline)
+    should_pause, urgency = should_trigger_viability_pause(task, days_left)
+
+    return {
+        "task_id": task_id,
+        "should_pause": should_pause,
+        "urgency": urgency,
+        "deferral_count": task.deferral_count,
+        "deadline_within_days": days_left,
+        "message": _URGENCY_MESSAGES.get(urgency or "", "") if should_pause else None,
+        "options": ["decompose", "extend", "archive"] if should_pause else [],
+    }
+
+
+@router.post("/tasks/{task_id}/viability-pause/resolve")
+async def resolve_viability_pause(
+    task_id: str,
+    payload: ViabilityResolvePayload,
+    db: Annotated[AsyncClient, Depends(require_db_client)],
+) -> dict[str, Any]:
+    """Resolve a Viability Pause by transitioning the task to the chosen status."""
+    row = await tasks_repo.get_task(db, payload.instance_id, task_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    task = _to_domain_task(row)
+    to_status = _RESOLVE_TO_STATUS[payload.action]
+
+    try:
+        # ledger_writer is a no-op here; full audit trail wired in Phase 5.
+        transition(task, to_status, ledger_writer=lambda _t, _s: None)
+    except InvalidTransitionError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cannot transition {exc.from_status} → {exc.to_status}",
+        ) from exc
+
+    updated = await tasks_repo.update_task_status(
+        db, payload.instance_id, task_id, to_status.value  # type: ignore[arg-type]
+    )
+    return {"task_id": task_id, "status": to_status.value, "task": updated}
