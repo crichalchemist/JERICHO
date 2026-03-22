@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from typing import Any, TypeVar
 
 from jericho.llm.registry import ModelProfile
@@ -71,29 +72,34 @@ def call_llm(
     otel_span: Any = None,
 ) -> T:
     """Single LLM call returning structured output via Instructor + openai client."""
+    t0 = time.perf_counter()
+
     if _is_stub(model_profile):
-        return _build_stub(schema)
+        result: T = _build_stub(schema)
+    else:
+        # Heavy imports deferred — openai/instructor not required during offline tests
+        import instructor
+        from openai import OpenAI
 
-    # Heavy imports deferred — openai/instructor not required during offline tests
-    import instructor
-    from openai import OpenAI
-
-    base_url = _resolve_base_url(model_profile)
-    client = instructor.from_openai(
-        OpenAI(base_url=base_url, api_key="no-key"),
-        mode=instructor.Mode.JSON,
-    )
+        base_url = _resolve_base_url(model_profile)
+        client = instructor.from_openai(
+            OpenAI(base_url=base_url, api_key="no-key"),
+            mode=instructor.Mode.JSON,
+        )
+        result = client.chat.completions.create(  # type: ignore[assignment]
+            model=model_profile.model_id,
+            messages=[{"role": "user", "content": prompt}],
+            response_model=schema,
+            max_retries=2,
+        )
 
     if otel_span is not None:
+        elapsed_ms = int((time.perf_counter() - t0) * 1000)
         otel_span.set_attribute("llm.model_id", model_profile.model_id)
         otel_span.set_attribute("llm.backend", model_profile.inference_backend)
+        otel_span.set_attribute("llm.latency_ms", elapsed_ms)
 
-    return client.chat.completions.create(  # type: ignore[no-any-return]
-        model=model_profile.model_id,
-        messages=[{"role": "user", "content": prompt}],
-        response_model=schema,
-        max_retries=2,
-    )
+    return result
 
 
 def subagent_spawn(

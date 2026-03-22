@@ -93,6 +93,14 @@ async def test_with_fallback_returns_fallback_on_exception():
     assert result == "safe"
 
 
+def test_call_llm_sets_latency_on_span():
+    from unittest.mock import MagicMock
+    span = MagicMock()
+    call_llm("prompt", DecomposedGoal, _STUB_PROFILE, otel_span=span)
+    attr_keys = {c.args[0] for c in span.set_attribute.call_args_list}
+    assert "llm.latency_ms" in attr_keys
+
+
 def test_pass_count_drives_decomposition_passes():
     """Verify stub respects recommended_pass_count as a smoke test (stubs return on pass 1)."""
     from jericho.llm.prompts.decomposition import run_decomposition_pipeline
