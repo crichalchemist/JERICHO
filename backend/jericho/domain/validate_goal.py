@@ -1,4 +1,4 @@
-"""Port of src/core/validate-goal.js."""
+"""Goal validation — port of src/core/validate-goal.js."""
 import re
 import uuid
 from typing import Any
@@ -19,9 +19,7 @@ def validate_goal(raw_goal_input: Any) -> dict[str, Any]:
     if len(parts) != 2:
         return {"valid": False, "error": "missing_by_keyword"}
 
-    outcome_raw = parts[0].strip()
-    deadline_raw = parts[1].strip()
-
+    outcome_raw, deadline_raw = parts[0].strip(), parts[1].strip()
     outcome_check = _validate_outcome(outcome_raw)
     if not outcome_check["valid"]:
         return outcome_check
@@ -31,8 +29,6 @@ def validate_goal(raw_goal_input: Any) -> dict[str, Any]:
         return deadline_check
 
     metric = outcome_check["metric"]
-    goal_type = _classify_type(outcome_raw, metric)
-
     return {
         "valid": True,
         "goal": {
@@ -41,7 +37,7 @@ def validate_goal(raw_goal_input: Any) -> dict[str, Any]:
             "outcome": outcome_check["outcome"],
             "metric": metric,
             "deadline": deadline_check["deadline"],
-            "type": goal_type,
+            "type": _classify_type(outcome_raw, metric),
         },
     }
 
@@ -50,7 +46,6 @@ def _validate_outcome(outcome_raw: str) -> dict[str, Any]:
     lower = outcome_raw.lower()
     if not lower.startswith("i will"):
         return {"valid": False, "error": "invalid_outcome"}
-
     if re.search(r"\band\b", outcome_raw, re.IGNORECASE):
         return {"valid": False, "error": "compound_goal"}
 
@@ -58,7 +53,6 @@ def _validate_outcome(outcome_raw: str) -> dict[str, Any]:
     verb_match = next(
         (v for v in _BINARY_VERBS if re.search(rf"\b{v}\b", outcome_raw, re.IGNORECASE)), None
     )
-
     if not number_match and not verb_match:
         if re.search(r"(improve|better|more|some|try)", outcome_raw, re.IGNORECASE):
             return {"valid": False, "error": "vague_outcome"}
@@ -73,7 +67,6 @@ def _validate_deadline(deadline_raw: str) -> dict[str, Any]:
         return {"valid": False, "error": "ambiguous_deadline"}
     from datetime import datetime
     try:
-        # Normalise to ISO format
         dt = datetime.fromisoformat(deadline_raw.rstrip("Z"))
         return {"valid": True, "deadline": dt.isoformat()}
     except ValueError:
