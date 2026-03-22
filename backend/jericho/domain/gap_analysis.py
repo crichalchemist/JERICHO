@@ -1,4 +1,4 @@
-"""Port of src/core/gap-analysis.js."""
+"""Capability gap analysis — port of src/core/gap-analysis.js."""
 from typing import Any
 
 
@@ -8,10 +8,9 @@ def _key(domain: Any, capability: Any) -> str:
 
 def _clamp(val: Any, lo: float, hi: float) -> float:
     try:
-        n = float(val)
+        return min(max(float(val), lo), hi)
     except (TypeError, ValueError):
         return lo
-    return min(max(n, lo), hi)
 
 
 def calculate_gap(requirements: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
@@ -36,11 +35,14 @@ def compute_capability_gaps(
 ) -> list[dict[str, Any]]:
     identity_state = identity_state or []
     requirements = requirements or []
-
     state_index: dict[str, dict[str, Any]] = {
         _key(e.get("domain"), e.get("capability")): {**e, "level": _clamp(e.get("level"), 1, 10)}
         for e in identity_state
     }
+
+    def _current(req: dict[str, Any]) -> float:
+        k = _key(req.get("domain"), req.get("capability"))
+        return state_index[k]["level"] if k in state_index else 3.0
 
     return [
         {
@@ -48,27 +50,11 @@ def compute_capability_gaps(
             "domain": req.get("domain"),
             "capability": req.get("capability"),
             "targetLevel": req.get("targetLevel"),
-            "currentLevel": (
-                (state_index[_key(req.get("domain"), req.get("capability"))]["level"])
-                if _key(req.get("domain"), req.get("capability")) in state_index
-                else 3
-            ),
+            "currentLevel": _current(req),
             "weight": _clamp(req.get("weight") or 0, 0, 1),
-            "rawGap": max(
-                (req.get("targetLevel") or 0) - (
-                    state_index[_key(req.get("domain"), req.get("capability"))]["level"]
-                    if _key(req.get("domain"), req.get("capability")) in state_index
-                    else 3
-                ),
-                0,
-            ),
+            "rawGap": max((req.get("targetLevel") or 0) - _current(req), 0),
             "weightedGap": _clamp(req.get("weight") or 0, 0, 1) * max(
-                (req.get("targetLevel") or 0) - (
-                    state_index[_key(req.get("domain"), req.get("capability"))]["level"]
-                    if _key(req.get("domain"), req.get("capability")) in state_index
-                    else 3
-                ),
-                0,
+                (req.get("targetLevel") or 0) - _current(req), 0
             ),
         }
         for req in requirements
@@ -77,8 +63,5 @@ def compute_capability_gaps(
 
 def rank_capability_gaps(gaps: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     gaps = gaps or []
-    ranked = sorted(
-        gaps,
-        key=lambda g: (-( g.get("weightedGap") or 0), str(g.get("capability") or "")),
-    )
+    ranked = sorted(gaps, key=lambda g: (-(g.get("weightedGap") or 0), str(g.get("capability") or "")))
     return [{**g, "rank": idx + 1} for idx, g in enumerate(ranked)]
