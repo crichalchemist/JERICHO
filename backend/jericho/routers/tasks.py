@@ -190,3 +190,26 @@ async def resolve_viability_pause(
         db, payload.instance_id, task_id, to_status.value  # type: ignore[arg-type]
     )
     return {"task_id": task_id, "status": to_status.value, "task": updated}
+
+
+# ---------------------------------------------------------------------------
+# GET /tasks/{task_id}/decision-ledger
+# ---------------------------------------------------------------------------
+
+@router.get("/tasks/{task_id}/decision-ledger")
+async def get_decision_ledger(
+    task_id: str,
+    instance_id: str,
+    db: Annotated[AsyncClient, Depends(require_db_client)],
+) -> list[dict[str, Any]]:
+    """Return Decision Ledger entries for a task ('Why was this moved?')."""
+    resp = await (
+        db.table("decision_ledger")
+        .select("decision_type,from_date,to_date,reason_code,load_ratio_dest,algorithm_version,timestamp")
+        .eq("instance_id", instance_id)
+        .eq("task_id", task_id)
+        .order("timestamp", desc=True)
+        .execute()
+    )
+    return resp.data or []
+

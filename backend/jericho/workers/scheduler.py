@@ -106,6 +106,14 @@ async def run_nightly_rescheduler(
         tasks = [_row_to_task(r) for r in task_rows]
         sorted_tasks = sort_tasks_for_placement(tasks, {}, {})
 
+        # Track original dates for ledger entries (before feathering overwrites).
+        original_dates: dict[str, date | None] = {
+            r.get("id", ""): (
+                date.fromisoformat(r["scheduled_date"]) if r.get("scheduled_date") else None
+            )
+            for r in task_rows
+        }
+
         results = run_feathering(
             deferred_tasks=sorted_tasks,
             blocking_dag={},
@@ -113,11 +121,11 @@ async def run_nightly_rescheduler(
             daily_loads={},
             capacity_vector=capacity_vector,
             start_date=today,
-            ledger_writer=lambda t, d: None,  # ledger writes deferred to Phase 5
+            ledger_writer=lambda t, d: None,  # sync; async ledger written below
             calendar_sync=lambda t, d: None,  # calendar sync deferred to Phase 5
         )
 
-        # 4. Persist placements back to DB.
+        # 4. Persist placements + decision-ledger entries.
         for result in results:
             if result.scheduled_date is None:
                 continue
@@ -128,6 +136,21 @@ async def run_nightly_rescheduler(
                     "status": TaskStatus.RESCHEDULED.value,
                 })
                 .eq("id", result.task_id)
+                .execute()
+            )
+            from_date = original_dates.get(result.task_id)
+            await (
+                db_client.table("decision_ledger")  # type: ignore[union-attr]
+                .insert({
+                    "instance_id": iid,
+                    "task_id": result.task_id,
+                    "decision_type": "feathering_placement",
+                    "from_date": str(from_date) if from_date else None,
+                    "to_date": result.scheduled_date.isoformat(),
+                    "reason_code": "overdue_reschedule",
+                    "load_ratio_dest": result.load_ratio,
+                    "algorithm_version": "2.0",
+                })
                 .execute()
             )
 

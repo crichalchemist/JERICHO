@@ -25,6 +25,7 @@ def _mock_db(rows_by_call: list[list[dict]]) -> MagicMock:
     chain.in_.return_value = chain
     chain.lt.return_value = chain
     chain.update.return_value = chain
+    chain.insert.return_value = chain
     chain.order.return_value = chain
     chain.execute = AsyncMock(side_effect=lambda: next(responses))
     return db
@@ -60,7 +61,7 @@ async def test_nightly_queries_tasks_table(monkeypatch):
         }
         for i in range(7)
     ]
-    db = _mock_db([[missed], identity, []])
+    db = _mock_db([[missed], identity, [], []])
     await run_nightly_rescheduler(db, instance_id="inst-001")
     db.table.assert_called()
 
@@ -86,7 +87,7 @@ async def test_nightly_updates_task_when_slot_found(monkeypatch):
         }
         for i in range(7)
     ]
-    db = _mock_db([[missed], identity, []])
+    db = _mock_db([[missed], identity, [], []])
     await run_nightly_rescheduler(db, instance_id="inst-001")
     db.table.assert_called()
     # update must have been called at least once for the rescheduled task
@@ -106,3 +107,31 @@ async def test_nightly_handles_empty_task_list():
     """When no overdue tasks exist, scheduler must complete without error."""
     db = _mock_db([[]])  # empty tasks response
     await run_nightly_rescheduler(db, instance_id="inst-001")
+
+
+async def test_ledger_written_after_rescheduling():
+    """A decision_ledger insert must fire for each successfully placed task."""
+    today = date.today()
+    missed = {
+        "id": "t1", "title": "Overdue", "status": "missed",
+        "cognitive_load": 0.3,
+        "scheduled_date": str(today - timedelta(days=2)),
+        "goal_id": "g1", "deadline": None, "deferral_count": 1,
+        "instance_id": "inst-001",
+        "task_type": "execution", "importance_tier": "flexible",
+        "estimated_duration_minutes": 30,
+    }
+    identity = [
+        {
+            "day_of_week": i,
+            "declared_capacity": 0.8,
+            "derived_capacity": 0.75,
+            "week_number": 4,
+        }
+        for i in range(7)
+    ]
+    # Four DB calls: tasks query, identity query, task update, ledger insert
+    db = _mock_db([[missed], identity, [], []])
+    await run_nightly_rescheduler(db, instance_id="inst-001")
+    ledger_calls = [c for c in db.table.call_args_list if c.args == ("decision_ledger",)]
+    assert len(ledger_calls) >= 1
