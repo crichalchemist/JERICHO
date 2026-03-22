@@ -11,8 +11,9 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { GoalExecutionContract } from '../../domain/goal/GoalExecutionContract';
-import { hashField, validateGoalAdmission, computeContractHash } from '../../domain/goal/GoalAdmissionPolicy';
+import { validateGoalAdmission, hashField } from '../../domain/goal/GoalAdmissionPolicy';
 import { GoalRejectionCode } from '../../domain/goal/GoalRejectionCode';
+import { buildValidGoalContract } from '../../domain/goal/testHelpers';
 
 const NOW_ISO = '2026-01-10T12:00:00.000Z';
 const DEADLINE_VALID = '2026-02-15';
@@ -20,68 +21,11 @@ const DEADLINE_VALID = '2026-02-15';
 function createValidContract(
   overrides: Partial<GoalExecutionContract> = {}
 ): GoalExecutionContract {
-  const base: GoalExecutionContract = {
-    goalId: 'goal-1',
-    cycleId: 'cycle-1',
-    planGenerationMechanismClass: 'GENERIC_DETERMINISTIC',
-    terminalOutcome: {
-      text: 'Complete the JERICHO implementation',
-      hash: hashField('Complete the JERICHO implementation'),
-      verificationCriteria: 'All modules deployed and tested',
-      isConcrete: true,
-    },
-    deadline: {
-      dayKey: DEADLINE_VALID,
-      isHardDeadline: true,
-    },
-    sacrifice: {
-      whatIsGivenUp: 'Free time on weekends',
-      duration: 'Until February 15',
-      quantifiedImpact: '8 hours/week',
-      rationale: 'Weekend time for development',
-      hash: hashField('Free time on weekends'),
-    },
-    temporalBinding: {
-      daysPerWeek: 5,
-      activationTime: '09:00',
-      sessionDurationMinutes: 120,
-      weeklyMinutes: 600,
-      startDayKey: '2026-01-10',
-    },
-    causalChain: {
-      steps: [
-        { sequence: 1, description: 'Design API', approximateDayOffset: 7 },
-        { sequence: 2, description: 'Implement services', approximateDayOffset: 14 },
-      ],
-      hash: hashField('design-implement'),
-    },
-    reinforcement: {
-      dailyExposureEnabled: true,
-      dailyMechanism: 'Calendar block + banner',
-      checkInFrequency: 'DAILY',
-      triggerDescription: 'Every morning at 6 AM',
-    },
-    inscription: {
-      contractHash: 'abc123def456',
-      inscribedAtISO: NOW_ISO,
-      acknowledgment: 'I understand this commitment',
-      acknowledgmentHash: hashField('I understand this commitment'),
-      isCompromised: false,
-    },
-    admissionStatus: 'PENDING',
-    admissionAttemptCount: 0,
-    rejectionCodes: [],
+  return buildValidGoalContract({
+    deadline: { dayKey: DEADLINE_VALID, isHardDeadline: true },
     createdAtISO: NOW_ISO,
-    isAspirational: false,
-  };
-  const contract = {
-    ...base,
-    ...overrides,
-  } as GoalExecutionContract;
-  if (contract.inscription) {
-    contract.inscription.contractHash = computeContractHash(contract);
-  }
-  return contract;
+    ...overrides
+  });
 }
 
 describe('GoalAdmissionPolicy.validateGoalAdmission (Integration Tests)', () => {

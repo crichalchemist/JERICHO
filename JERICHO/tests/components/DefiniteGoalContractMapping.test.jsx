@@ -39,6 +39,7 @@ const buildStore = (override = {}) => ({
   generateColdPlan: vi.fn(),
   rebaseColdPlan: vi.fn(),
   applyPlan: vi.fn(),
+  commitPreviewItems: vi.fn(),
   attemptGoalAdmission: vi.fn(),
   archiveAndCloneCycle: vi.fn(),
   deliverablesByCycleId: {},

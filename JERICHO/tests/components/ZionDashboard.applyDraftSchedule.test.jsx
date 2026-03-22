@@ -85,7 +85,7 @@ describe('ZionDashboard apply draft schedule', () => {
       expect(screen.queryByTestId('ghost-suggested:s1')).not.toBeInTheDocument();
     });
 
-    const realBlock = await screen.findByTestId('block-draft:cycle-active:1');
-    expect(realBlock).toBeInTheDocument();
+    const realBlockLabel = await screen.findByText('Write vocals');
+    expect(realBlockLabel).toBeInTheDocument();
   });
 });

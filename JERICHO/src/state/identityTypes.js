@@ -111,6 +111,13 @@
  *   goalPlan?: { planProof: GoalPlanProof; scheduleBlocks: ColdPlanScheduleBlock[]; generatedAtISO: string };
  *   planProof?: PlanProof;
  *   autoAsanaPlan?: AutoAsanaPlan;
+ *   policyState?: {
+ *     currentPolicyId?: string;
+ *     policySetAtDayKey?: string;
+ *     policyAgeDays?: number;
+ *     priorSignalsSnapshot?: any;
+ *   };
+ *   lastPolicySelectionDecision?: any;
  *   lastPlanAppliedAtISO?: string | null;
  *   goalAdmission?: { status: AdmissionStatus; reasonCodes: AdmissionReasonCode[]; admittedAtISO?: string };
  * }} Cycle
@@ -346,6 +353,25 @@
  *   successDefinition?: string;
  *   horizonDays: number;
  *   daysPerWeek: number;
+ *   qualityPolicyId?: string;
+ *   autoPolicySelection?: boolean;
+ *   minPolicyHoldDays?: number;
+ *   enableQualityOptimizer?: boolean;
+ *   optimizerMaxIterations?: number;
+ *   optimizerMaxCandidates?: number;
+ *   enableMilestonePacing?: boolean;
+ *   pacingCadenceMode?: 'weekly'|'biweekly'|'adaptive';
+ *   actions?: Array<{ id: string; estimateMin?: number; category?: string; dependencies?: string[] }>;
+ *   milestones?: Array<{
+ *     milestoneId: string;
+ *     windowStartDayKey: string;
+ *     windowEndDayKey: string;
+ *     checkpointActionIds?: string[];
+ *     actionIds?: string[];
+ *   }>;
+ *   executionHorizonDays?: number;
+ *   maxScheduledMinutesPerDay?: number;
+ *   maxScheduledMinutesPerWeek?: number;
  * }} PlanDraft
  */
 
@@ -423,6 +449,28 @@
  *   totalMinutes: number;
  *   primaryDomain?: PracticeName;
  *   horizonDays?: number;
+ *   qualityPolicyIdRequested?: string;
+ *   qualityPolicyIdUsed?: string;
+ *   policySelectionDecision?: any;
+ *   policySelectionReasonCodes?: string[];
+ *   policySelectionSignalsSnapshot?: any;
+ *   qualityScoreBaseline?: number;
+ *   qualityScoreBaselineByComponent?: Record<string, number>;
+ *   qualityScoreOptimized?: number;
+ *   qualityScoreOptimizedByComponent?: Record<string, number>;
+ *   qualityImprovementDelta?: number;
+ *   optimizerRejectedCandidatesSummary?: Record<string, number>;
+ *   pacingCadenceModeUsed?: string;
+ *   pacingInjectedCheckpointCount?: number;
+ *   pacingInjectedByMilestone?: Record<string, { count: number; ids: string[] }>;
+ *   pacingSegmentCount?: number;
+ *   pacingRequiredCriticalMinutes?: number;
+ *   pacingAvailableWindowMinutes?: number;
+ *   pacingSlackRatio?: number;
+ *   pacingInfeasibleMilestonesCount?: number;
+ *   pacingByMilestone?: Record<string, any>;
+ *   pacingAnchoringMissCount?: number;
+ *   milestonePlacedRatioAvg?: number;
  * }} PlanPreview
  */
 

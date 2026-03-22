@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { attemptGoalAdmissionPure } from '../identityStore.js';
 import { computeContractHash } from '../../domain/goal/GoalAdmissionPolicy.ts';
+import { buildValidGoalContract } from '../../domain/goal/testHelpers.ts';
 import { GoalRejectionCode } from '../../domain/goal/GoalRejectionCode.ts';
 
 const NOW_ISO = '2026-01-10T12:00:00.000Z';
@@ -18,27 +19,25 @@ function buildMinimalState() {
 }
 
 function createValidContract(overrides = {}) {
-  const contract = {
-    planGenerationMechanismClass: 'GENERIC_DETERMINISTIC',
-    terminalOutcome: { text: 'Ship MVP feature X', hash: '', verificationCriteria: 'Feature is live', isConcrete: true },
+  const contract = buildValidGoalContract({
+    terminalOutcome: { text: 'Ship MVP feature X', verificationCriteria: 'Feature is live', isConcrete: true },
     deadline: { dayKey: '2026-02-20', isHardDeadline: true },
-    sacrifice: { whatIsGivenUp: 'Weekend social activities', duration: '6 weeks', quantifiedImpact: '10 hours/week', rationale: 'Focus on delivery', hash: '' },
+    sacrifice: { whatIsGivenUp: 'Weekend social activities', duration: '6 weeks', quantifiedImpact: '10 hours/week', rationale: 'Focus on delivery' },
     temporalBinding: { daysPerWeek: 5, activationTime: '09:00', sessionDurationMinutes: 120, weeklyMinutes: 600, startDayKey: '2026-01-10' },
-    causalChain: { steps: [{ sequence: 1, description: 'Design' }], hash: '' },
+    causalChain: { steps: [{ sequence: 1, description: 'Design', approximateDayOffset: 7 }] },
     reinforcement: { dailyExposureEnabled: true, dailyMechanism: 'Calendar title', checkInFrequency: 'DAILY', triggerDescription: 'Morning' },
-    inscription: { contractHash: '', inscribedAtISO: NOW_ISO, acknowledgment: 'I accept', acknowledgmentHash: '', isCompromised: false },
-    isAspirational: false
-  };
-  // compute and populate hashes
-  Object.assign(contract.terminalOutcome, overrides.terminalOutcome || {});
-  Object.assign(contract.sacrifice, overrides.sacrifice || {});
-  Object.assign(contract.causalChain, overrides.causalChain || {});
-  Object.assign(contract.temporalBinding, overrides.temporalBinding || {});
-  contract.inscription.contractHash = computeContractHash(contract);
-  contract.terminalOutcome.hash = contract.inscription.contractHash.slice(0, 16);
-  contract.sacrifice.hash = contract.inscription.contractHash.slice(16, 32);
-  contract.causalChain.hash = contract.inscription.contractHash.slice(32);
-  contract.inscription.acknowledgmentHash = contract.inscription.contractHash.slice(0, 16);
+    inscription: { inscribedAtISO: NOW_ISO, acknowledgment: 'I accept', isCompromised: false },
+    isAspirational: false,
+    ...overrides
+  });
+
+  if (contract.inscription) {
+    contract.inscription.contractHash = computeContractHash(contract);
+    contract.terminalOutcome.hash = contract.inscription.contractHash.slice(0, 16);
+    contract.sacrifice.hash = contract.inscription.contractHash.slice(16, 32);
+    contract.causalChain.hash = contract.inscription.contractHash.slice(32);
+    contract.inscription.acknowledgmentHash = contract.inscription.contractHash.slice(0, 16);
+  }
   return contract;
 }
 
@@ -136,7 +135,9 @@ describe('identityStore.attemptGoalAdmissionPure', () => {
 
   it('rejects duplicates when multiple active cycles share the same signature', () => {
     const state = buildMinimalState();
-    const contract = createValidContract({ terminalOutcome: { text: 'Duplicate goal' } });
+    const contract = createValidContract({
+      terminalOutcome: { text: 'Duplicate goal', verificationCriteria: 'Goal complete', isConcrete: true }
+    });
     // create two active cycles with same terminal outcome
     state.cyclesById['cycle-1'] = {
       id: 'cycle-1',

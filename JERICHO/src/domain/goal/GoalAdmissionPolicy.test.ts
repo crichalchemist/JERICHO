@@ -10,9 +10,15 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { validateGoalAdmission, verifyContractIntegrity } from './GoalAdmissionPolicy';
+import { validateGoalAdmission, verifyContractIntegrity, hashField } from './GoalAdmissionPolicy';
 import { GoalRejectionCode } from './GoalRejectionCode';
 import { buildValidGoalContract } from './testHelpers';
+
+const NOW_ISO = '2026-01-10T12:00:00.000Z';
+
+function createValidContract(overrides = {}) {
+  return buildValidGoalContract(overrides);
+}
 
 describe('GoalAdmissionPolicy', () => {
   describe('validateGoalAdmission', () => {

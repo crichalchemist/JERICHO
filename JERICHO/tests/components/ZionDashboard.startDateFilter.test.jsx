@@ -44,6 +44,7 @@ const buildStore = (suggestedBlocks = [], activeDayKey = '2026-01-20') => ({
   probabilityByGoal: {},
   feasibilityByGoal: {},
   profileLearning: {},
+  commitPreviewItems: stubAction,
   actions: actionsProxy,
   deliverables: [],
   suggestionEvents: [],

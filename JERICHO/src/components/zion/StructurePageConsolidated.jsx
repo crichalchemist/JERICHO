@@ -18,7 +18,7 @@ import { useIdentityStore } from '../../state/identityStore';
 import GoalAdmissionPage from '../../ui/goalAdmission/GoalAdmissionPage';
 import { getActiveGoalOutcomes } from '../../state/cycleSelectors.js';
 import { buildDraftScheduleItems } from '../../state/draftSchedule.js';
-import { selectVisiblePreviewItems, getContractStartDayKey, getContractDeadlineDayKey } from '../../state/suggestionFilters.js';
+import { selectVisibleDraftItems, getContractStartDayKey, getContractDeadlineDayKey } from '../../state/suggestionFilters.js';
 
 const formatDate = (iso) => {
   if (!iso) return '';
@@ -103,8 +103,17 @@ export function StructurePageConsolidated() {
     archiveAndCloneCycle
   } = store;
   const activeCycle = activeCycleId ? cyclesById[activeCycleId] : null;
+  const planDraft = activeCycle?.planDraft ?? store.planDraft ?? null;
+  const isCycleReadOnly =
+    activeCycle?.status === 'Ended' ||
+    activeCycle?.status === 'Archived' ||
+    activeCycle?.state === 'Ended' ||
+    activeCycle?.state === 'Archived';
   const hasAdmittedGoal = Boolean(activeCycle?.goalContract);
   const timeZone = appTime?.timeZone || 'UTC';
+  const contractStartDayKey = getContractStartDayKey(activeCycle?.goalContract, timeZone);
+  const activeDayKey = appTime?.activeDayKey || null;
+  const suppressDrafts = Boolean(contractStartDayKey && activeDayKey && activeDayKey < contractStartDayKey);
   const routeForecast = useMemo(() => {
     const forecast = activeCycle?.coldPlan?.forecastByDayKey || {};
     return Object.keys(forecast || {})
@@ -124,7 +133,7 @@ export function StructurePageConsolidated() {
         routeSuggestions: routeForecast,
         contract,
         timeZone,
-        contractStartDayKey: getContractStartDayKey(contract, timeZone),
+        contractStartDayKey,
         defaults: {
           todayKey: appTime?.activeDayKey || new Date().toISOString().split('T')[0],
           primaryDomain: contract?.primaryDomain || 'FOCUS',
@@ -135,7 +144,7 @@ export function StructurePageConsolidated() {
   );
   const visiblePreviewItems = useMemo(
     () =>
-      selectVisiblePreviewItems({
+      selectVisibleDraftItems({
         cycle: activeCycle,
         draftItems: rawDraftItems,
         timeZone,
