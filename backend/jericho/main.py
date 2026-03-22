@@ -16,7 +16,7 @@ from jericho.constants import CORS_ALLOW_ORIGINS
 from jericho.db.client import create_db_client
 from jericho.llm.registry import load_registry
 from jericho.observability.tracing import setup_tracing
-from jericho.routers import accountability, ai, calendar, goals, health, identity, internal, pipeline, rhythms, state, tasks, team
+from jericho.routers import accountability, ai, calendar, goals, health, identity, internal, native, pipeline, rhythms, state, tasks, team
 from jericho.workers.scheduler import create_scheduler
 
 
@@ -77,6 +77,7 @@ def create_app() -> FastAPI:
     app.include_router(ai.router, prefix="/ai")
     app.include_router(team.router, prefix="/team")
     app.include_router(internal.router, prefix="/internal")
+    app.include_router(native.router, prefix="/native")
 
     return app
 

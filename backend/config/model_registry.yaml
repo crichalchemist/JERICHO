@@ -26,6 +26,18 @@ models:
     latency_profile: "slow"
     supports_tool_use: true
 
+  - model_id: "mlx-llama3-8b"
+    inference_backend: "mlx"
+    context_window_tokens: 8192
+    structured_output_reliability: "medium"
+    reasoning_depth: "medium"
+    recommended_pass_count: 3
+    self_critique_required: false
+    timeout_threshold_seconds: 20
+    latency_profile: "fast"
+    supports_tool_use: false
+    # iOS on-device: runs via MLX when JERICHO_BACKEND_URL is absent
+
   - model_id: "stub"
     inference_backend: "stub"
     context_window_tokens: 4096
