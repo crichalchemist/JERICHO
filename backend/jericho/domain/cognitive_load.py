@@ -1,10 +1,4 @@
-"""
-Cognitive load computation — PRD §3.3.
-
-The formula weights a base task-type load by duration and dependency
-position multipliers, then optionally bumps it when the user has
-manually overridden the estimate.
-"""
+"""Cognitive load computation — PRD §3.3."""
 from __future__ import annotations
 
 from jericho.constants import (
@@ -13,8 +7,6 @@ from jericho.constants import (
     USER_OVERRIDE_LOAD_BONUS,
 )
 
-
-# ── Bucket helpers ────────────────────────────────────────────────────────────
 
 def _duration_key(duration_minutes: int) -> str:
     if duration_minutes <= 30:
@@ -34,28 +26,15 @@ def _dependency_key(dependent_count: int) -> str:
     return "three_plus"
 
 
-# ── Public interface ──────────────────────────────────────────────────────────
-
 def compute_cognitive_load(
     task_type_baseline: float,
     duration_minutes: int,
     dependent_count: int,
     user_override: bool = False,
 ) -> float:
-    """Compute cognitive load for a task, clamped to [0.0, 1.0].
-
-    Args:
-        task_type_baseline: Raw load score for the task type (0.0–1.0).
-        duration_minutes:   Estimated task duration.
-        dependent_count:    Number of tasks that depend on this one.
-        user_override:      True when the user has manually adjusted the estimate.
-
-    Returns:
-        Cognitive load score in [0.0, 1.0].
-    """
+    """Cognitive load clamped to [0.0, 1.0]; weights task type by duration + dependency position."""
     duration_mult = DURATION_MULTIPLIERS[_duration_key(duration_minutes)]
     dependency_mult = DEPENDENCY_POSITION_WEIGHTS[_dependency_key(dependent_count)]
     override_bonus = USER_OVERRIDE_LOAD_BONUS if user_override else 0.0
-
     raw = task_type_baseline * duration_mult * dependency_mult + override_bonus
     return min(max(raw, 0.0), 1.0)
