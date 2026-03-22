@@ -18,17 +18,31 @@ def test_load_registry_returns_tuple_of_profiles():
 def test_load_registry_has_expected_models():
     registry = load_registry(REGISTRY_PATH)
     model_ids = {p.model_id for p in registry}
-    assert "llama3-8b" in model_ids
+    assert "llama3-8b-instruct" in model_ids
+    assert "bitnet-2b" in model_ids
     assert "stub" in model_ids
 
 
 def test_get_model_profile_found():
     registry = load_registry(REGISTRY_PATH)
-    profile = get_model_profile("llama3-8b", registry)
-    assert profile.model_id == "llama3-8b"
-    assert profile.inference_backend == "ollama"
+    profile = get_model_profile("llama3-8b-instruct", registry)
+    assert profile.model_id == "llama3-8b-instruct"
+    assert profile.inference_backend == "llamacpp"
     assert profile.recommended_pass_count == 4
     assert profile.self_critique_required is True
+
+
+def test_model_profile_has_base_url():
+    registry = load_registry(REGISTRY_PATH)
+    profile = get_model_profile("llama3-8b-instruct", registry)
+    assert hasattr(profile, "base_url")
+
+
+def test_bitnet_profile_exists():
+    registry = load_registry(REGISTRY_PATH)
+    profile = get_model_profile("bitnet-2b", registry)
+    assert profile.inference_backend == "bitnet"
+    assert profile.latency_profile == "fast"
 
 
 def test_get_model_profile_not_found_raises():

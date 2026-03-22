@@ -2,21 +2,24 @@
 Model Capability Registry — loads config/model_registry.yaml once at startup.
 
 Each ModelProfile is a frozen dataclass; the registry is an immutable tuple.
-Lookups are O(n) over a small set — no indexing overhead needed.
+base_url: when empty, adapter resolves via LLAMACPP_BASE_URL / BITNET_BASE_URL
+env vars; still empty after resolution → stub mode (no network call).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
 import yaml
 
+InferenceBackend = Literal["llamacpp", "bitnet", "mlx", "stub"]
+
 
 @dataclass(frozen=True)
 class ModelProfile:
     model_id: str
-    inference_backend: Literal["ollama", "stub"]
+    inference_backend: InferenceBackend
     context_window_tokens: int
     structured_output_reliability: Literal["low", "medium", "high"]
     reasoning_depth: Literal["low", "medium", "high"]
@@ -25,6 +28,7 @@ class ModelProfile:
     timeout_threshold_seconds: int
     latency_profile: Literal["fast", "medium", "slow"]
     supports_tool_use: bool
+    base_url: str = field(default="")
 
 
 def load_registry(path: Path) -> tuple[ModelProfile, ...]:

@@ -4,30 +4,37 @@
 # OQ-08: 20% latency divergence over 50 samples triggers a review.
 
 models:
-  - model_id: "llama3-8b"
-    inference_backend: "ollama"
-    context_window_tokens: 8192
+  - model_id: "llama3-8b-instruct"
+    inference_backend: "llamacpp"
+    base_url: ""
+    context_window_tokens: 4096
     structured_output_reliability: "medium"
     reasoning_depth: "medium"
     recommended_pass_count: 4
     self_critique_required: true
-    timeout_threshold_seconds: 45
+    timeout_threshold_seconds: 60
     latency_profile: "medium"
     supports_tool_use: false
+    # macports: /opt/local/bin/llama-server --port 8080
+    # model: Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf (~5GB)
 
-  - model_id: "llama3-70b"
-    inference_backend: "ollama"
-    context_window_tokens: 8192
-    structured_output_reliability: "high"
-    reasoning_depth: "high"
-    recommended_pass_count: 2
+  - model_id: "bitnet-2b"
+    inference_backend: "bitnet"
+    base_url: ""
+    context_window_tokens: 2048
+    structured_output_reliability: "low"
+    reasoning_depth: "low"
+    recommended_pass_count: 1
     self_critique_required: false
-    timeout_threshold_seconds: 90
-    latency_profile: "slow"
-    supports_tool_use: true
+    timeout_threshold_seconds: 15
+    latency_profile: "fast"
+    supports_tool_use: false
+    # ~/BitNet/build/bin/llama-server --port 8081
+    # model: ~/BitNet/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf
 
   - model_id: "mlx-llama3-8b"
     inference_backend: "mlx"
+    base_url: ""
     context_window_tokens: 8192
     structured_output_reliability: "medium"
     reasoning_depth: "medium"
@@ -40,6 +47,7 @@ models:
 
   - model_id: "stub"
     inference_backend: "stub"
+    base_url: ""
     context_window_tokens: 4096
     structured_output_reliability: "low"
     reasoning_depth: "low"
