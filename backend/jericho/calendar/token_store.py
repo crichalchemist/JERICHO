@@ -1,11 +1,8 @@
 """
 AES-256-GCM credential encryption + Supabase user_credentials repository.
 
-Why GCM over CBC: GCM is authenticated encryption — decryption fails loudly
-if the ciphertext has been tampered with. CBC provides confidentiality only.
-
-Nonce handling: a fresh 12-byte random nonce is prepended to every ciphertext.
-Nonce reuse with the same key would break GCM security, so we never reuse one.
+GCM is authenticated encryption — decryption fails loudly if tampered with.
+A fresh 12-byte random nonce is prepended to every ciphertext; never reused.
 """
 from __future__ import annotations
 
@@ -29,9 +26,7 @@ def encrypt_payload(data: dict[str, Any], raw_key: str) -> bytes:
     """Encrypt *data* to AES-256-GCM ciphertext. Returns nonce ‖ ciphertext."""
     key = _derive_key(raw_key)
     nonce = os.urandom(_NONCE_BYTES)
-    aesgcm = AESGCM(key)
-    plaintext = json.dumps(data).encode()
-    ciphertext = aesgcm.encrypt(nonce, plaintext, None)
+    ciphertext = AESGCM(key).encrypt(nonce, json.dumps(data).encode(), None)
     return nonce + ciphertext
 
 
@@ -39,14 +34,9 @@ def decrypt_payload(blob: bytes, raw_key: str) -> dict[str, Any]:
     """Decrypt AES-256-GCM blob (nonce ‖ ciphertext) → original dict."""
     key = _derive_key(raw_key)
     nonce, ciphertext = blob[:_NONCE_BYTES], blob[_NONCE_BYTES:]
-    aesgcm = AESGCM(key)
-    plaintext = aesgcm.decrypt(nonce, ciphertext, None)
+    plaintext = AESGCM(key).decrypt(nonce, ciphertext, None)
     return json.loads(plaintext.decode())  # type: ignore[no-any-return]
 
-
-# ---------------------------------------------------------------------------
-# Supabase repository
-# ---------------------------------------------------------------------------
 
 CredentialType = str  # "google" | "caldav"
 
@@ -60,7 +50,6 @@ async def save_credentials(
 ) -> None:
     """Upsert encrypted credential payload for (instance_id, credential_type)."""
     encrypted = encrypt_payload(payload, raw_key)
-    # Store as hex string — JSONB cannot hold raw bytes; hex is compact + safe.
     await (
         client.table("user_credentials")
         .upsert(
