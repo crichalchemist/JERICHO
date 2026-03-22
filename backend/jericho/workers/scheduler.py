@@ -1,42 +1,137 @@
 """
 Nightly rescheduler — Phase 4.
 
-Runs at 23:59 daily (per-server timezone; per-user timezone support deferred
-to Phase 5 when timezone data is stored on instance_state).
-
-The job fetches all instance_ids with active tasks from Supabase, then for
-each runs the feathering algorithm against tomorrow's look-ahead window.
-When Supabase is unconfigured (db_client is None) the job logs and exits
-cleanly — this preserves Phase 0/1 JSON-adapter operation.
+Runs at 23:59 daily. Fetches all instances with overdue tasks from Supabase,
+then runs the feathering algorithm per instance to find new slots.
+When db_client is None (JSON-adapter / Phase 0 mode), the job exits cleanly.
 """
 from __future__ import annotations
 
 import logging
+from datetime import date
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from jericho.domain.capacity_profile import apply_cold_start
+from jericho.domain.look_ahead import run_feathering, sort_tasks_for_placement
+from jericho.domain.types import CapacityVector, Task, TaskStatus
+
 log = logging.getLogger(__name__)
 
-_ACTIVE_STATUSES = ("created", "scheduled", "in_window", "rescheduled", "date_extended")
+_OVERDUE_STATUSES = ("missed", "rescheduled")
 
 
-async def run_nightly_rescheduler(db_client: object | None) -> None:
+def _row_to_task(row: dict) -> Task:
+    return Task(
+        id=row["id"],
+        goal_id=row.get("goal_id", ""),
+        title=row.get("title", ""),
+        status=row.get("status", TaskStatus.MISSED.value),
+        task_type=row.get("task_type", "execution"),
+        importance_tier=row.get("importance_tier", "routine"),
+        estimated_duration_minutes=int(row.get("estimated_duration_minutes", 30)),
+        cognitive_load=float(row.get("cognitive_load", 0.3)),
+        deferral_count=int(row.get("deferral_count", 0)),
+        instance_id=row.get("instance_id", ""),
+    )
+
+
+def _build_capacity_vector(identity_rows: list[dict]) -> CapacityVector:
+    """Build a 7-slot CapacityVector from identity_state rows (one per day_of_week)."""
+    slots = [0.75] * 7  # sensible default if rows are missing
+    for row in identity_rows:
+        day = int(row.get("day_of_week", 0))
+        week_number = int(row.get("week_number", 4))
+        declared = float(row.get("declared_capacity", 0.75))
+        derived = float(row.get("derived_capacity", declared))
+        # Cold-start applies during first 3 weeks; after that, use derived capacity.
+        effective = apply_cold_start(declared, week_number) if week_number <= 3 else derived
+        if 0 <= day < 7:
+            slots[day] = effective
+    return CapacityVector(values=tuple(slots))
+
+
+async def run_nightly_rescheduler(
+    db_client: object | None,
+    instance_id: str | None = None,
+) -> None:
     """Entry point for the nightly 23:59 job.
 
-    *db_client* is the Supabase AsyncClient, or None in JSON-adapter mode.
-    The full feathering pipeline (look_ahead.run_feathering) is invoked here
-    once Phase 4 repository queries are wired up.
+    *instance_id*: if provided, only reschedule tasks for that instance
+    (used in integration tests). In production, fetches all active instances.
     """
     if db_client is None:
         log.debug("Nightly rescheduler skipped — no Supabase client configured")
         return
 
     log.info("Nightly rescheduler starting")
-    # Phase 4 stub: query active instance_ids and run feathering per instance.
-    # Full implementation requires calendar_sync_state + task queries which
-    # will be completed alongside Phase 5 rhythm integration.
-    log.info("Nightly rescheduler complete (stub)")
+    today = date.today()
+    today_str = today.isoformat()
+
+    # 1. Fetch overdue tasks (optionally filtered by instance_id).
+    query = (
+        db_client.table("tasks")  # type: ignore[union-attr]
+        .select("*")
+        .in_("status", list(_OVERDUE_STATUSES))
+        .lt("scheduled_date", today_str)
+    )
+    if instance_id:
+        query = query.eq("instance_id", instance_id)
+
+    task_resp = await query.execute()
+    rows: list[dict] = task_resp.data or []
+
+    if not rows:
+        log.info("Nightly rescheduler: no overdue tasks found")
+        return
+
+    # 2. Group by instance_id.
+    by_instance: dict[str, list[dict]] = {}
+    for row in rows:
+        iid = row.get("instance_id", "")
+        by_instance.setdefault(iid, []).append(row)
+
+    # 3. For each instance: load capacity, run feathering, persist updates.
+    for iid, task_rows in by_instance.items():
+        identity_resp = await (
+            db_client.table("identity_state")  # type: ignore[union-attr]
+            .select("*")
+            .eq("instance_id", iid)
+            .execute()
+        )
+        identity_rows: list[dict] = identity_resp.data or []
+        capacity_vector = _build_capacity_vector(identity_rows)
+
+        tasks = [_row_to_task(r) for r in task_rows]
+        sorted_tasks = sort_tasks_for_placement(tasks, {}, {})
+
+        results = run_feathering(
+            deferred_tasks=sorted_tasks,
+            blocking_dag={},
+            preferred_dag={},
+            daily_loads={},
+            capacity_vector=capacity_vector,
+            start_date=today,
+            ledger_writer=lambda t, d: None,  # ledger writes deferred to Phase 5
+            calendar_sync=lambda t, d: None,  # calendar sync deferred to Phase 5
+        )
+
+        # 4. Persist placements back to DB.
+        for result in results:
+            if result.scheduled_date is None:
+                continue
+            await (
+                db_client.table("tasks")  # type: ignore[union-attr]
+                .update({
+                    "scheduled_date": result.scheduled_date.isoformat(),
+                    "status": TaskStatus.RESCHEDULED.value,
+                })
+                .eq("id", result.task_id)
+                .execute()
+            )
+
+    log.info("Nightly rescheduler complete — processed %d instances", len(by_instance))
 
 
 def create_scheduler(db_client: object | None) -> AsyncIOScheduler:
@@ -49,6 +144,6 @@ def create_scheduler(db_client: object | None) -> AsyncIOScheduler:
         id="nightly_rescheduler",
         name="Nightly task rescheduler",
         replace_existing=True,
-        misfire_grace_time=300,  # 5-minute grace — tolerate brief outages
+        misfire_grace_time=300,
     )
     return scheduler
