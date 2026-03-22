@@ -1,0 +1,38 @@
+---
+# Model Capability Registry
+# Update via PR only. See scripts/check_registry_drift.py for drift detection.
+# OQ-08: 20% latency divergence over 50 samples triggers a review.
+
+models:
+  - model_id: "llama3-8b"
+    inference_backend: "ollama"
+    context_window_tokens: 8192
+    structured_output_reliability: "medium"
+    reasoning_depth: "medium"
+    recommended_pass_count: 4
+    self_critique_required: true
+    timeout_threshold_seconds: 45
+    latency_profile: "medium"
+    supports_tool_use: false
+
+  - model_id: "llama3-70b"
+    inference_backend: "ollama"
+    context_window_tokens: 8192
+    structured_output_reliability: "high"
+    reasoning_depth: "high"
+    recommended_pass_count: 2
+    self_critique_required: false
+    timeout_threshold_seconds: 90
+    latency_profile: "slow"
+    supports_tool_use: true
+
+  - model_id: "stub"
+    inference_backend: "stub"
+    context_window_tokens: 4096
+    structured_output_reliability: "low"
+    reasoning_depth: "low"
+    recommended_pass_count: 1
+    self_critique_required: false
+    timeout_threshold_seconds: 1
+    latency_profile: "fast"
+    supports_tool_use: false

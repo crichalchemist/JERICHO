@@ -4,3 +4,13 @@ coverage
 dist
 *.log
 .worktrees
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
