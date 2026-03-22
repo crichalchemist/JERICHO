@@ -1,5 +1,5 @@
 """
-Port of src/core/pipeline.js — run_pipeline() orchestrator.
+Closed-loop pipeline orchestrator — port of src/core/pipeline.js.
 Output shape must match the JS version exactly; the React frontend consumes it unchanged.
 """
 from datetime import datetime, timedelta, timezone
@@ -72,10 +72,7 @@ def run_pipeline(
     tasks: list[dict[str, Any]] | None = None,
     team: Any = None,
 ) -> dict[str, Any]:
-    """
-    Closed-loop pipeline orchestrator.
-    Pure function — no I/O. All external state passed as arguments.
-    """
+    """Pure function — no I/O. All external state passed as arguments."""
     history = history or []
     tasks = tasks or []
 
@@ -117,8 +114,7 @@ def run_pipeline(
 
     average_pressure = (
         sum(max(0, g.get("weightedGap") or 0) for g in ranked_gaps_after) / len(ranked_gaps_after)
-        if ranked_gaps_after
-        else 0.0
+        if ranked_gaps_after else 0.0
     )
     total_terminal = integrity_summary["completedCount"] + integrity_summary["missedCount"]
     recent_completion_rate = (
@@ -164,8 +160,7 @@ def run_pipeline(
 
     now = datetime.now(timezone.utc)
     now_iso = now.isoformat()
-    cycle_end = now + timedelta(days=7)
-    cycle_end_iso = cycle_end.isoformat()
+    cycle_end_iso = (now + timedelta(days=7)).isoformat()
 
     day_slots = build_day_slots(now_iso, cycle_end_iso)
     schedule_result = schedule_tasks_into_slots(next_cycle_tasks, day_slots, integrity_summary)
@@ -175,14 +170,10 @@ def run_pipeline(
         "cycleStart": now_iso,
         "cycleEnd": cycle_end_iso,
         "goal": goal.get("raw"),
-        "integrity": {
-            "score": integrity_summary["score"],
-            "breakdown": integrity_explanation.get("breakdown", {}),
-        },
+        "integrity": {"score": integrity_summary["score"], "breakdown": integrity_explanation.get("breakdown", {})},
         "changes": changes,
         "taskCount": len(next_cycle_tasks),
     }
-    updated_history = [*history, history_entry]
 
     return {
         "goal": goal,
@@ -202,7 +193,7 @@ def run_pipeline(
             "lastRun": now_iso,
         },
         "changes": changes,
-        "history": updated_history,
+        "history": [*history, history_entry],
         "analysis": {
             "averagePressure": average_pressure,
             "recentCompletionRate": recent_completion_rate,
