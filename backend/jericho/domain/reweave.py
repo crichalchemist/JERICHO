@@ -17,7 +17,8 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Literal
+from datetime import date as _Date
+from typing import Any, Literal
 
 from jericho.constants import EWA_ALPHA
 from jericho.domain.capacity_profile import compute_ewa, derive_capacity_from_signal
@@ -51,6 +52,24 @@ class SundownOutput:
     narrative_summary: str
     capacity_update_narrative: str
     capacity_match_prompt: str
+
+
+def compute_per_day_ratios(tasks: Sequence[dict[str, Any]]) -> tuple[float, ...]:
+    """Completion ratio per day-of-week (Mon=0..Sun=6) from task row dicts."""
+    completed: dict[int, int] = {i: 0 for i in range(7)}
+    total: dict[int, int] = {i: 0 for i in range(7)}
+    for t in tasks:
+        sd = t.get("scheduled_date")
+        if not sd:
+            continue
+        dow = _Date.fromisoformat(str(sd)).weekday()
+        total[dow] += 1
+        if t.get("status") == "completed":
+            completed[dow] += 1
+    return tuple(
+        completed[i] / total[i] if total[i] > 0 else 0.0
+        for i in range(7)
+    )
 
 
 def compute_completion_ratio(statuses: Sequence[TaskStatus]) -> float:

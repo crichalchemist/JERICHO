@@ -35,3 +35,8 @@ class SelfCritiqueRevision(BaseModel):
     revised_tasks: list[TaskDecomposition]
     confidence_score: float = Field(ge=0.0, le=1.0)
     rationale: str
+
+
+class NarrativeText(BaseModel):
+    """Short plain-language narrative produced by a lightweight model."""
+    text: str = Field(description="Plain language narrative, under 100 words.")

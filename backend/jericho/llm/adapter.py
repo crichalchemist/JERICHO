@@ -15,7 +15,7 @@ import os
 from typing import Any, TypeVar
 
 from jericho.llm.registry import ModelProfile
-from jericho.llm.schemas import DecomposedGoal
+from jericho.llm.schemas import DecomposedGoal, NarrativeText
 
 T = TypeVar("T")
 
@@ -24,6 +24,7 @@ _STUB_DECOMPOSED_GOAL = DecomposedGoal(
     tasks=[],
     dependency_rationale="Stub mode — no LLM call made.",
 )
+_STUB_NARRATIVE = NarrativeText(text="Stub narrative — no LLM call made.")
 
 _BACKEND_ENV: dict[str, str] = {
     "llamacpp": "LLAMACPP_BASE_URL",
@@ -55,6 +56,8 @@ def _build_stub(schema: type[T]) -> T:
     """Return a deterministic stub instance for the given schema type."""
     if schema is DecomposedGoal:
         return _STUB_DECOMPOSED_GOAL  # type: ignore[return-value]
+    if schema is NarrativeText:
+        return _STUB_NARRATIVE  # type: ignore[return-value]
     try:
         return schema.model_construct()  # type: ignore[return-value, union-attr]
     except Exception:

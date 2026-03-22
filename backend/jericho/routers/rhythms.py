@@ -10,6 +10,8 @@ updates the Capacity Profile via EWA, persists a sundown_sessions record.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
+from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -23,12 +25,18 @@ from jericho.domain.capacity_profile import apply_cold_start
 from jericho.domain.reweave import (
     SundownInput,
     compute_completion_ratio,
+    compute_per_day_ratios,
     run_reweave_pipeline,
     select_tone_branch,
 )
 from jericho.domain.types import CapacityVector, MomentumSignal, TaskStatus
+from jericho.llm.registry import ModelProfile, load_registry, get_model_profile
 
 router = APIRouter(tags=["rhythms"])
+
+_REGISTRY_PATH = Path(__file__).parent.parent.parent / "config" / "model_registry.yaml"
+_REGISTRY = load_registry(_REGISTRY_PATH)
+_NARRATIVE_PROFILE: ModelProfile = get_model_profile("bitnet-2b", _REGISTRY)
 
 _DEFERRED_STATUSES = {"rescheduled", "missed", "date_extended", "viability_pause"}
 _SCHEDULED_STATUSES = {"scheduled", "in_window", "completed", "missed", "rescheduled",
@@ -48,9 +56,16 @@ def _build_capacity_vector(identity_rows: list[dict[str, Any]]) -> CapacityVecto
     return CapacityVector(values=values)
 
 
-def _stub_llm(prompt: str, tone: str) -> str:
-    """Stub LLM caller — returns placeholder until Ollama is wired in Phase 5.1."""
-    return f"[{tone}] {prompt[:60]}..."
+def _build_llm_caller(profile: ModelProfile) -> Callable[[str, str], str]:
+    """Return a narrative caller backed by call_llm (stubs when base_url empty)."""
+    from jericho.llm.adapter import call_llm
+    from jericho.llm.schemas import NarrativeText
+
+    def _caller(prompt: str, tone: str) -> str:
+        result = call_llm(f"[{tone}] {prompt}", NarrativeText, profile)
+        return result.text
+
+    return _caller
 
 
 # ---------------------------------------------------------------------------
@@ -137,10 +152,8 @@ async def saturday_sundown(
     statuses = [TaskStatus(t["status"]) for t in week_tasks
                 if t.get("status") in {s.value for s in TaskStatus}]
 
-    # Per-day completion ratios — approximate from overall ratio for now
-    # (Phase 5.1 will use actual day-of-week breakdowns from task scheduled_date)
     overall_ratio = compute_completion_ratio(statuses)
-    completion_by_day = tuple([overall_ratio] * 7)
+    completion_by_day = compute_per_day_ratios(week_tasks)
 
     signal = MomentumSignal(body.momentum_signal)
     inp = SundownInput(
@@ -153,7 +166,7 @@ async def saturday_sundown(
         completion_ratios_by_day=completion_by_day,
     )
 
-    output = run_reweave_pipeline(inp, _stub_llm)
+    output = run_reweave_pipeline(inp, _build_llm_caller(_NARRATIVE_PROFILE))
 
     # Persist updated capacity profile (one row per day of week)
     for day_of_week, new_capacity in enumerate(output.updated_capacity.values):
