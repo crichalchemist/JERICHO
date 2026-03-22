@@ -11,9 +11,9 @@ Dependency semantics:
                   LOOK_AHEAD_DEFAULT_DAYS (7), relaxed beyond that.
   parallel_ok   — ignored for placement ordering.
 
-Why two passes rather than one: giving preferred-order constraints a full
-first-pass attempt prevents needlessly punting tasks into the extension
-window just because capacity is available on an out-of-order day.
+Two-pass design: pass 1 enforces both hard + preferred constraints;
+pass 2 relaxes preferred so capacity pressure doesn't force Viability Pause
+when a later day would work fine.
 """
 from __future__ import annotations
 
@@ -33,17 +33,14 @@ def sort_tasks_for_placement(
     deadline_proximity: Mapping[str, int | None],
     dependency_blocking_factor: Mapping[str, int],
 ) -> tuple[Task, ...]:
-    """Sort tasks for greedy placement.
-
-    Order: deadline proximity ASC (urgent first), blocking factor DESC
-    (unblock others first), cognitive_load ASC (easier to fit first).
-    """
+    """Sort for greedy placement: urgent first, high-blocker first, light load first."""
     def _key(task: Task) -> tuple[int, int, float]:
         proximity = deadline_proximity.get(task.id)
-        proximity_key = proximity if proximity is not None else _LARGE_PROXIMITY
-        blocking = dependency_blocking_factor.get(task.id, 0)
-        return (proximity_key, -blocking, task.cognitive_load)
-
+        return (
+            proximity if proximity is not None else _LARGE_PROXIMITY,
+            -dependency_blocking_factor.get(task.id, 0),
+            task.cognitive_load,
+        )
     return tuple(sorted(tasks, key=_key))
 
 
@@ -74,34 +71,26 @@ def find_placement_day(
     start_date: date,
     look_ahead_window: int = LOOK_AHEAD_DEFAULT_DAYS,
 ) -> date | None:
-    """Return the earliest viable placement date, or None if none found.
-
-    A None result means the task should enter Viability Pause.
-    """
-    # Hard constraint: all blocking deps must already be placed before this date.
+    """Return the earliest viable placement date, or None (→ Viability Pause)."""
+    # Hard constraint: all blocking deps must be placed before this task.
     blocking_deps = blocking_dag.get(task.id, frozenset())
     for dep_id in blocking_deps:
         if dep_id not in already_placed:
-            return None  # blocking dep unplaced — cannot schedule this task yet
+            return None
 
     hard_dates = [already_placed[dep_id] for dep_id in blocking_deps]
-    earliest_after_hard = (
-        max(hard_dates) + timedelta(days=1) if hard_dates else start_date
-    )
+    earliest_after_hard = max(hard_dates) + timedelta(days=1) if hard_dates else start_date
 
-    # Soft constraint: preferred-order deps (respected within look_ahead_window).
     preferred_deps = preferred_dag.get(task.id, frozenset())
     preferred_dates = [already_placed[d] for d in preferred_deps if d in already_placed]
     earliest_after_preferred = (
         max(preferred_dates) + timedelta(days=1) if preferred_dates else start_date
     )
 
-    # Pass 1: respect both hard + preferred constraints (days 1..look_ahead_window).
+    # Pass 1: respect both constraints (days 1..look_ahead_window).
     for offset in range(1, look_ahead_window + 1):
         day = start_date + timedelta(days=offset)
-        if day < earliest_after_hard:
-            continue
-        if day < earliest_after_preferred:
+        if day < earliest_after_hard or day < earliest_after_preferred:
             continue
         if _fits(task, day, daily_loads, capacity_vector):
             return day
@@ -114,7 +103,7 @@ def find_placement_day(
         if _fits(task, day, daily_loads, capacity_vector):
             return day
 
-    return None  # No slot found in 14-day window → caller triggers Viability Pause
+    return None
 
 
 def run_feathering(
@@ -130,22 +119,16 @@ def run_feathering(
 ) -> tuple[PlacementResult, ...]:
     """Greedily place every deferred task and return placement results.
 
-    *deferred_tasks* should be pre-sorted via sort_tasks_for_placement.
-    *pre_placed* contains already-scheduled tasks whose dates constrain deps.
-    *daily_loads* is NOT mutated — a local working copy is maintained.
-
-    Side effects (ledger_writer, calendar_sync) are called once per task,
-    even when the result is None (unplaceable), so the audit trail is complete.
+    Validates the combined DAG for cycles before any work.
+    Side effects (ledger_writer, calendar_sync) fire once per task — even
+    when unplaceable — so the audit trail is complete.
     """
-    # Validate the combined DAG for cycles before doing any work.
-    full_dag: dict[str, set[str]] = {}
-    for task in deferred_tasks:
-        deps = (
-            blocking_dag.get(task.id, frozenset())
-            | preferred_dag.get(task.id, frozenset())
+    full_dag: dict[str, set[str]] = {
+        task.id: set(
+            blocking_dag.get(task.id, frozenset()) | preferred_dag.get(task.id, frozenset())
         )
-        full_dag[task.id] = set(deps)
-
+        for task in deferred_tasks
+    }
     sorter = graphlib.TopologicalSorter(full_dag)
     try:
         sorter.prepare()
@@ -154,8 +137,8 @@ def run_feathering(
 
     working_loads: dict[date, float] = dict(daily_loads)
     already_placed: dict[str, date] = dict(pre_placed or {})
-
     results: list[PlacementResult] = []
+
     for task in deferred_tasks:
         new_date = find_placement_day(
             task=task,
@@ -177,14 +160,13 @@ def run_feathering(
             if capacity > 0.0:
                 load_ratio = compute_load_ratio(working_loads[new_date], capacity)
 
-        result = PlacementResult(
+        ledger_writer(task, new_date)
+        calendar_sync(task, new_date)
+        results.append(PlacementResult(
             task_id=task.id,
             scheduled_date=new_date,
             load_ratio=load_ratio,
             was_deferred=new_date != task.scheduled_date,
-        )
-        ledger_writer(task, new_date)
-        calendar_sync(task, new_date)
-        results.append(result)
+        ))
 
     return tuple(results)
