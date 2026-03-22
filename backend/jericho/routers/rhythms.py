@@ -11,6 +11,7 @@ updates the Capacity Profile via EWA, persists a sundown_sessions record.
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -39,6 +40,13 @@ _REGISTRY = load_registry(_REGISTRY_PATH)
 _NARRATIVE_PROFILE: ModelProfile = get_model_profile("bitnet-2b", _REGISTRY)
 
 _DEFERRED_STATUSES = {"rescheduled", "missed", "date_extended", "viability_pause"}
+
+
+def _week_bounds(today: date) -> tuple[date, date]:
+    """Return (Sunday, Saturday) for the week containing today (PRD §4.6)."""
+    days_since_sunday = (today.weekday() + 1) % 7
+    week_start = today - timedelta(days=days_since_sunday)
+    return week_start, week_start + timedelta(days=6)
 _SCHEDULED_STATUSES = {"scheduled", "in_window", "completed", "missed", "rescheduled",
                        "viability_pause", "date_extended"}
 
@@ -181,11 +189,14 @@ async def saturday_sundown(
         )
 
     # Persist sundown session record
+    week_start, week_end = _week_bounds(date.today())
     await (
         db.table("sundown_sessions")
         .insert({
             "instance_id": body.instance_id,
             "week_number": week_number,
+            "week_start": str(week_start),
+            "week_end": str(week_end),
             "completion_ratio": output.completion_ratio,
             "tone_branch_used": output.tone_branch,
             "momentum_signal": body.momentum_signal,
