@@ -2,7 +2,7 @@
 Multi-pass goal decomposition pipeline.
 
 Runs N independent passes (recommended_pass_count from registry) then an
-optional self-critique pass. Each pass is a fresh subagent — no bleed.
+optional self-critique pass. Each pass is a fresh subagent — no context bleed.
 The final result is the last pass output, revised by critique if enabled.
 """
 from __future__ import annotations
@@ -44,9 +44,9 @@ def run_decomposition_pipeline(
     goal: str,
     model_profile: ModelProfile,
 ) -> DecomposedGoal:
-    """
-    N independent decomposition passes then optional self-critique.
-    Returns the final DecomposedGoal — revised if self_critique_required.
+    """N independent decomposition passes then optional self-critique.
+
+    Returns the final DecomposedGoal — revised if self_critique_required and tasks exist.
     """
     prompt = _DECOMPOSE_PROMPT.format(goal=goal)
     result = DecomposedGoal(goal_title=goal, tasks=[], dependency_rationale="")

@@ -30,7 +30,7 @@ class DecomposedGoal(BaseModel):
 
 
 class SelfCritiqueRevision(BaseModel):
-    """Structured output for the self-critique pass — reviews the decomposition for issues."""
+    """Reviews a decomposition for issues and provides revised tasks."""
     issues_found: list[str]
     revised_tasks: list[TaskDecomposition]
     confidence_score: float = Field(ge=0.0, le=1.0)
