@@ -19,40 +19,23 @@ from jericho.constants import (
 from jericho.domain.types import Task
 
 
-# ── Load ratio ────────────────────────────────────────────────────────────────
-
 def compute_load_ratio(daily_load: float, capacity: float) -> float:
-    """Ratio of scheduled load to available capacity for a given day.
-
-    Capacity of 0 is treated as effectively zero-capacity (returns inf-equivalent
-    1e9) so downstream checks always land in the "overloaded" branch.
-    """
     if capacity <= 0:
         return float("inf")
     return daily_load / capacity
 
 
-# ── Viability classification ──────────────────────────────────────────────────
-
 ViabilityLabel = Literal["viable", "overloaded", "infeasible"]
 
 
 def check_viability(load_ratio: float) -> ViabilityLabel:
-    """Classify a load ratio into a viability label.
-
-    Boundaries (from constants, matching PRD §3.2):
-      0.0 – 0.75  → viable
-      0.75 – 1.0  → overloaded   (degraded but schedulable)
-      > 1.0       → infeasible
-    """
+    """Classify a load ratio per PRD §3.2 thresholds."""
     if load_ratio > OVERLOADED_THRESHOLD:
         return "infeasible"
     if load_ratio >= VIABLE_THRESHOLD:
         return "overloaded"
     return "viable"
 
-
-# ── Viability Pause triggers ──────────────────────────────────────────────────
 
 UrgencyLevel = Literal["low", "high"]
 
@@ -61,19 +44,15 @@ def should_trigger_viability_pause(
     task: Task,
     deadline_within_days: int | None,
 ) -> tuple[bool, UrgencyLevel] | tuple[Literal[False], None]:
-    """Determine whether a Viability Pause should be triggered for a task.
+    """Return (True, urgency) when a pause is warranted, (False, None) otherwise.
 
-    Returns (True, urgency) when a pause is warranted, (False, None) otherwise.
-
-    Rules (PRD §3.2):
-      - ≥ VIABILITY_PAUSE_DEFERRAL_HIGH deferrals                 → high urgency + decompose offer
-      - ≥ VIABILITY_PAUSE_DEADLINE_DEFERRAL deferrals
-        + deadline within VIABILITY_PAUSE_DEADLINE_DAYS           → high urgency
-      - ≥ VIABILITY_PAUSE_DEFERRAL_LOW deferrals + no deadline    → low urgency
+    Rule priority (PRD §3.2):
+      1. ≥ DEFERRAL_HIGH deferrals           → high (beats all other rules)
+      2. ≥ DEADLINE_DEFERRAL + deadline ≤ 7d → high
+      3. ≥ DEFERRAL_LOW + no deadline        → low
     """
     d = task.deferral_count
 
-    # Highest-priority check first so it takes precedence over the deadline rule
     if d >= VIABILITY_PAUSE_DEFERRAL_HIGH:
         return (True, "high")
 
