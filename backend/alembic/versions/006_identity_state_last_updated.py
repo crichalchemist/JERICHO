@@ -54,7 +54,7 @@ def upgrade() -> None:
     op.execute("""
         CREATE TABLE IF NOT EXISTS native_notifications (
             id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            instance_id     UUID NOT NULL REFERENCES instances(id) ON DELETE CASCADE,
+            instance_id     UUID NOT NULL,
             title           TEXT NOT NULL,
             body            TEXT NOT NULL DEFAULT '',
             delivered_at    TIMESTAMPTZ,

@@ -25,13 +25,13 @@ _STANDARD_TABLES = (
     "identity_state",
     "goals",
     "tasks",
-    "task_dependencies",
     "calendar_sync_state",
     "model_execution_log",
 )
+# task_dependencies has no instance_id — isolation is via tasks FK + RLS above
 
-# Insert-only audit tables — no DELETE or UPDATE policies
-_AUDIT_TABLES = ("decision_ledger", "accountability_link_events")
+# Insert-only audit tables with instance_id — no DELETE or UPDATE policies
+_AUDIT_TABLES = ("decision_ledger",)
 
 
 def upgrade() -> None:
@@ -65,13 +65,25 @@ def upgrade() -> None:
             USING (owner_instance_id = current_setting('app.instance_id', true)::uuid)
     """)
 
-    # ── task_dependencies inherits via tasks JOIN — also lock directly ─────────
-    # task_dependencies has no instance_id column; the tasks FK join provides
-    # the isolation boundary.  We rely on the tasks RLS policy for security.
+    # ── accountability_link_events: no instance_id, isolate via link join ───────
+    op.execute("ALTER TABLE accountability_link_events ENABLE ROW LEVEL SECURITY")
+    op.execute("""
+        CREATE POLICY instance_isolation ON accountability_link_events
+            FOR SELECT
+            USING (
+                link_id IN (
+                    SELECT id FROM accountability_links
+                    WHERE owner_instance_id = current_setting('app.instance_id', true)::uuid
+                )
+            )
+    """)
 
 
 def downgrade() -> None:
-    for table in _STANDARD_TABLES + _AUDIT_TABLES + ("accountability_links",):
+    all_tables = _STANDARD_TABLES + _AUDIT_TABLES + (
+        "accountability_links", "accountability_link_events"
+    )
+    for table in all_tables:
         op.execute(f"DROP POLICY IF EXISTS instance_isolation ON {table}")
         op.execute(f"DROP POLICY IF EXISTS instance_insert ON {table}")
         op.execute(f"DROP POLICY IF EXISTS owner_isolation ON {table}")
