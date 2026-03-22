@@ -1,21 +1,17 @@
-"""
-Core domain types for Jericho 2.0.
+"""Core domain types — enums and immutable dataclasses.
 
-All dataclasses are frozen (immutable) — state transitions produce new
-instances rather than mutating in place.
+No I/O, no side effects. All business objects are frozen dataclasses so
+they can be safely passed between pure functions without mutation risk.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import date, datetime
+from dataclasses import dataclass, field
+from datetime import date
 from enum import Enum
-from typing import Literal
 
-
-# ── Enumerations ──────────────────────────────────────────────────────────────
 
 class TaskStatus(str, Enum):
-    """Lifecycle states for a Task.  See state_machine.py for valid transitions."""
+    """Task lifecycle states — stored as strings for DB serialisation."""
     CREATED = "created"
     SCHEDULED = "scheduled"
     IN_WINDOW = "in_window"
@@ -29,65 +25,66 @@ class TaskStatus(str, Enum):
 
 
 class DependencyType(str, Enum):
+    """Strength of task ordering relationship."""
     BLOCKING = "blocking"
     PREFERRED_ORDER = "preferred_order"
     PARALLEL_OK = "parallel_ok"
 
 
 class MomentumSignal(str, Enum):
+    """User-reported workload perception from Saturday Sundown."""
     HEAVY = "heavy"
     NEUTRAL = "neutral"
     LIGHT = "light"
 
 
-# ── Value objects ─────────────────────────────────────────────────────────────
+class ToneBranch(str, Enum):
+    """Narrative tone selected by the Reweave pipeline."""
+    MOMENTUM = "momentum"
+    BALANCED = "balanced"
+    RECALIBRATION = "recalibration"
+
 
 @dataclass(frozen=True)
 class CapacityVector:
-    """Daily declared capacity, indexed Monday(0)–Sunday(6).
-
-    Why length-7 tuple rather than dict: positional indexing allows direct
-    arithmetic with day-of-week integers from Python's date.weekday().
-    """
+    """7-slot immutable capacity vector — one slot per day of week (Mon–Sun)."""
     values: tuple[float, ...]
 
     def __post_init__(self) -> None:
         if len(self.values) != 7:
-            raise ValueError(
-                f"CapacityVector must have exactly 7 values, got {len(self.values)}"
-            )
+            raise ValueError(f"CapacityVector requires exactly 7 values, got {len(self.values)}")
 
 
 @dataclass(frozen=True)
 class Task:
-    """Immutable snapshot of a task at a point in time."""
+    """Immutable task value object used throughout the domain layer."""
     id: str
     goal_id: str
     title: str
-    status: TaskStatus
-    task_type: Literal["decision", "research", "creative", "execution", "administrative"]
-    importance_tier: Literal["hard_deadline", "routine", "flexible"]
+    status: str  # TaskStatus.value
+    task_type: str
+    importance_tier: str
     estimated_duration_minutes: int
     cognitive_load: float
     deferral_count: int
-    dependencies: tuple[str, ...]   # IDs of tasks this one depends on
-    scheduled_date: date | None = None
+    dependencies: tuple[str, ...] = field(default_factory=tuple)
     deadline: date | None = None
+    scheduled_date: date | None = None
+    instance_id: str = ""
 
 
 @dataclass(frozen=True)
 class Goal:
-    """Immutable snapshot of a goal."""
+    """Immutable goal value object."""
     id: str
-    instance_id: str
     title: str
-    created_at: datetime
+    instance_id: str
 
 
 @dataclass(frozen=True)
 class PlacementResult:
-    """Output of the look-ahead feathering algorithm for a single task."""
+    """Result of placing one task into a schedule slot."""
     task_id: str
-    scheduled_date: date | None
+    scheduled_date: date
     load_ratio: float
     was_deferred: bool
