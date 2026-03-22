@@ -884,11 +884,21 @@ explicit user consent gates. No direct database access between instances.
 7.1 Infrastructure Stack (Borrow)
 --------------------------------------------------------------------------------
   AI ENGINE:
-    Web/macOS:  Ollama with Metal acceleration on Apple Silicon
+    Web/macOS (heavy tasks — decomposition, self-critique):
+      llama.cpp via macports (/opt/local/bin/llama-server, port 8080)
+      Model: Llama-3.1-8B-Instruct Q4_K_M (~4.6 GB GGUF)
+      NOTE: AMD Radeon Pro 580 / non-Apple-Silicon requires -ngl 0
+      (CPU-only; Metal backend unsupported for pre-M-series discrete GPUs)
+    Web/macOS (lightweight tasks — narrative, summaries):
+      BitNet.cpp (~/BitNet/build/bin/llama-server, port 8081)
+      Model: BitNet-b1.58-2B-4T (ggml-model-i2_s.gguf)
     iOS:        MLX (Apple's array framework for Apple Silicon)
     iOS fallback: Core ML model export
     Server alt: vLLM for high-throughput server deployments
     All backends abstracted behind Model Adapter Layer (Section 7.3)
+    [DEVIATION from original spec: Ollama replaced by llama.cpp +
+     BitNet.cpp. Both expose identical OpenAI-compatible /v1 APIs
+     consumed via openai.OpenAI(base_url=...) + Instructor. See OQ-10.]
 
   DATA PARSING:
     Instructor (Python) — forces LLM to return validated Pydantic schemas
@@ -959,7 +969,9 @@ explicit user consent gates. No direct database access between instances.
   REGISTRY ENTRY SCHEMA:
     {
       model_id:                      STRING
-      inference_backend:             ENUM [ollama|mlx|coreml|vllm|api]
+      inference_backend:             ENUM [llamacpp|bitnet|mlx|stub]
+                                     [DEVIATION: originally ollama|mlx|coreml|vllm|api
+                                      Updated per OQ-10 resolution.]
       context_window_tokens:         INTEGER
       structured_output_reliability: ENUM [low|medium|high]
       reasoning_depth:               ENUM [low|medium|high]
@@ -1124,7 +1136,7 @@ explicit user consent gates. No direct database access between instances.
   OQ-02 → RESOLVED: PLATFORM ROADMAP
     Web (current) → macOS via Tauri → iOS via Swift + MLX/Core ML.
     Backend is optional for on-device deployments.
-    Apple Silicon inference via Ollama+Metal (macOS) and MLX (iOS).
+    macOS inference via llama.cpp + BitNet.cpp (see OQ-10). iOS via MLX.
     See Section 2.4.
 
   OQ-03 → RESOLVED: MODEL-AGNOSTIC ARCHITECTURE WITH ADAPTIVE FUNCTION
@@ -1144,6 +1156,16 @@ explicit user consent gates. No direct database access between instances.
     (2) Sunday Briefing opens with Capacity Snapshot section.
     Both LLM-generated, model-adaptive, tone-calibrated.
     See Section 3.7.
+
+  OQ-10 → RESOLVED: OLLAMA REPLACED BY LLAMA.CPP + BITNET.CPP
+    Ollama removed from scope. llama.cpp (macports) handles heavy tasks
+    (decomposition, self-critique) on port 8080. BitNet.cpp handles
+    lightweight tasks (narrative, summaries) on port 8081. Both expose
+    identical OpenAI-compatible /v1 APIs consumed via openai.OpenAI +
+    Instructor. No Ollama dependency in pyproject.toml.
+    AMD Radeon Pro 580 / non-Apple-Silicon: requires -ngl 0 flag (CPU-only
+    inference; Metal backend crashes on pre-M-series discrete GPUs).
+    See Section 7.1, 7.3.
 
 
 ================================================================================
