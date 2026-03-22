@@ -16,15 +16,39 @@ npm run build        # lint + test + vite build
 ```
 Run a single JS test: `NODE_OPTIONS=--experimental-vm-modules jest tests/core/scoring-engine.test.js`
 
-### Python (FastAPI — active backend, port 8000)
+### Python (FastAPI — primary backend, port 8000)
 ```bash
 cd backend
 uv venv .venv && source .venv/bin/activate   # one-time setup
 uv pip install -e ".[test]"                  # install all deps including test extras
 uv run uvicorn jericho.main:app --reload     # run FastAPI dev server
-uv run pytest                                # full test suite with coverage
+uv run pytest                                # full unit suite (offline, no LLM/DB needed)
 uv run pytest tests/domain/ --no-cov -v     # domain-only tests, verbose
 uv run pytest tests/domain/test_pipeline.py -v --no-cov   # single file
+```
+
+Integration tests (require local Supabase via Colima):
+```bash
+cd infra/supabase && docker compose up -d   # start Supabase stack
+SUPABASE_URL=http://localhost:8000 \
+SUPABASE_SERVICE_ROLE_KEY=<key> \
+uv run pytest tests/db/ -v --no-cov         # RLS + repository tests
+```
+
+DB migrations (run inside Docker network — macOS host can't reach container IPs directly):
+```bash
+cd backend
+docker run --rm --network supabase_default \
+  -v $(pwd):/backend -w /backend \
+  python:3.12-slim \
+  sh -c "pip install -q alembic psycopg2-binary sqlalchemy && alembic upgrade head"
+```
+
+LLM env vars (stub mode when unset — tests always run offline):
+```
+LLAMACPP_BASE_URL=http://localhost:8080/v1   # llama-server (macports)
+BITNET_BASE_URL=http://localhost:8081/v1     # BitNet llama-server
+MLX_BASE_URL=http://localhost:8082/v1        # on-device iOS (Phase 6)
 ```
 
 ### Cutover (switching frontend from Node to FastAPI)
@@ -33,50 +57,49 @@ VITE_API_BASE_URL=http://localhost:8000 npm run dev:client
 python scripts/compare_routes.py            # verify parity before cutover
 ```
 
-The FastAPI dev server reads state from `STATE_PATH` env var (defaults to `../src/data/state_good.json`).
-
 ## Architecture
 
-The system is a **closed-loop behavioral execution engine**. The pipeline is the architectural spine:
+The system is a **closed-loop behavioral execution engine** targeting momentum over task completion rate. The Python pipeline is the canonical spine:
 
 ```
 Goal Input → validateGoal → deriveIdentityRequirements → computeCapabilityGaps
   → generateTasksForCycle → computeIntegrityScore → applyIdentityUpdate
-  → (repeat next cycle)
+  → (nightly: run_feathering → reschedule overdue tasks)
 ```
-
-`src/core/pipeline.js` is the orchestrator — it imports and sequences every engine module. This is the entry point for understanding the system.
 
 ### Layer map
 
 | Layer | Path | Role |
 |---|---|---|
-| Core engines | `src/core/` | Pure functions, no I/O. All business logic lives here. |
-| API | `src/api/server.js` | Single HTTP server (Node `http`, no framework). Routes call core engines. |
-| Services | `src/services/` | I/O-bound side effects: reinforcement, integrity writes, calendar sync. |
-| LLM | `src/llm/` | Isolated behind `callLLM()`. Stubs when `LLM_API_KEY` is absent. |
-| AI | `src/ai/` | LLM contract spec (`llm-contract.js`) and commands schema. |
-| Data | `src/data/` | State storage (`storage.js`), schemas, mock data, fixture JSONs. |
-| UI | `src/ui/` | React/Vite client. `App.jsx` → view components + `api-client.js`. |
+| Domain | `backend/jericho/domain/` | Pure functions, no I/O. All business logic. |
+| LLM | `backend/jericho/llm/` | Instructor + openai client. Stubs when backend URL unset. |
+| DB | `backend/jericho/db/` | Supabase async repositories + Alembic migrations. |
+| Routers | `backend/jericho/routers/` | Thin FastAPI HTTP layer — no logic. |
+| Workers | `backend/jericho/workers/` | APScheduler nightly rescheduler (23:59 cron). |
+| Calendar | `backend/jericho/calendar/` | Google + CalDAV backends behind `CalendarBackend` Protocol. |
+| UI | `src/ui/` | React/Vite client (unchanged throughout migration). |
+| Legacy JS | `src/core/`, `src/api/` | Node.js — kept idle post-cutover, then retired. |
+| Infra | `infra/supabase/` | Self-hosted Supabase Docker stack (Colima). |
 
 ### Key design decisions
 
-- **Pure functions everywhere in `src/core/`** — no hidden state, no I/O. Every engine takes plain data, returns plain data. This is why Jest coverage targets only `src/core`.
-- **State persisted as JSON** — `src/data/storage.js` reads/writes via `STATE_PATH` env var. State shape is enforced by `state-validator.js` and `validation/invariants.js`.
-- **ESM only** — `"type": "module"` in package.json. All imports use `.js` extensions. No CommonJS.
-- **LLM is a stub by default** — `callLLM()` returns a deterministic stub when `LLM_API_KEY` is unset. Tests don't need to mock it.
-- **Team layer is optional** — pipeline accepts an optional `team` argument; all team engines (`team-model.js`, `team-identity-engine.js`, `team-governance-engine.js`) gracefully handle `undefined`.
+- **Pure functions everywhere in `backend/jericho/domain/`** — frozen dataclasses, no I/O, no side effects. Side effects are injected (`ledger_writer`, `calendar_sync` callables).
+- **LLM stub by default** — resolution order: `profile.base_url` → env var → `""` (stub). No hardcoded localhost defaults, so the full test suite runs offline.
+- **LLM backends**: llama.cpp (macports `/opt/local/bin/llama-server`, port 8080) for heavy tasks; BitNet.cpp (`~/BitNet/build/bin/llama-server`, port 8081) for lightweight tasks. Both expose identical OpenAI-compatible APIs via `openai.OpenAI(base_url=...) + Instructor`.
+- **Supabase RLS** — every table has `instance_id` isolation. FastAPI middleware injects `SET LOCAL app.instance_id` per request from JWT.
+- **DB migrations run inside Docker** — macOS host can't directly reach container IPs; use `docker run --network supabase_default`.
+- **`str+Enum` pattern** — domain enums inherit from both `str` and `Enum` (e.g. `class TaskStatus(str, Enum)`) for DB serialization compatibility.
 
-### Behavioral control
+### Domain modules
 
-`behavioral-control-engine.js` implements pacing mode selection (`stabilize` / `build` / `advance`) based on integrity score, pressure, and completion rate. The `portfolio-optimizer.js` and `cycle-governance.js` modules gate which tasks advance to the next cycle.
+`domain/pipeline.py` orchestrates the full cycle (entry point for understanding the system).
 
-### Validation subsystem
+Key pure-function modules: `viability.py` (load ratio + pause triggers), `capacity_profile.py` (EWA + cold-start), `cognitive_load.py`, `state_machine.py` (valid transitions as frozenset), `look_ahead.py` (two-pass feathering), `scoring_engine.py` (integrity score 0–100).
 
-`src/core/validation/` contains two modules:
-- `invariants.js` — structural constraints that must always hold (checked on every write)
-- `health.js` — aggregated advisory health signals surfaced at `/api/health`
+### LLM registry
+
+`config/model_registry.yaml` defines `ModelProfile` entries. Each profile specifies `inference_backend` (`llamacpp` | `bitnet` | `mlx` | `stub`), `recommended_pass_count`, and `self_critique_required`. The adapter resolves `base_url` at call time — empty string always triggers stub mode.
 
 ### Scoring
 
-`scoring-engine.js` computes an `integrityScore` (0–100) by weighting task outcomes by `estimatedImpact × difficultyWeight × timelinessWeight`. Missed tasks subtract from the raw total; pending tasks are excluded. This score feeds back into pacing mode and identity updates.
+`scoring_engine.py` computes `integrityScore` (0–100) weighting task outcomes by `estimatedImpact × difficultyWeight × timelinessWeight`. Missed tasks subtract; pending excluded. Score feeds pacing mode (`stabilize` / `build` / `advance`) and identity updates.
