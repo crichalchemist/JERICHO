@@ -1,9 +1,12 @@
 """
-LLM adapter — wraps Instructor + Ollama.
+LLM adapter — Instructor + openai-compatible client (llama.cpp / BitNet.cpp).
 
-All external LLM calls go through call_llm(). Stub mode activates when
-inference_backend == "stub" or LLM_API_KEY is absent — returns a deterministic
-stub without touching the network. Same pattern as the JS callLLM() stub.
+Stub mode: inference_backend == "stub" OR resolved base_url is empty.
+  llamacpp → LLAMACPP_BASE_URL  (default http://localhost:8080/v1)
+  bitnet   → BITNET_BASE_URL    (default http://localhost:8081/v1)
+  mlx      → MLX_BASE_URL       (iOS on-device; stubs on server when unset)
+
+No network call is ever made during testing (env vars absent → stub).
 """
 from __future__ import annotations
 
@@ -22,16 +25,36 @@ _STUB_DECOMPOSED_GOAL = DecomposedGoal(
     dependency_rationale="Stub mode — no LLM call made.",
 )
 
+_BACKEND_ENV: dict[str, str] = {
+    "llamacpp": "LLAMACPP_BASE_URL",
+    "bitnet": "BITNET_BASE_URL",
+    "mlx": "MLX_BASE_URL",
+}
 
-def _is_stub_mode(model_profile: ModelProfile) -> bool:
-    return model_profile.inference_backend == "stub" or not os.getenv("LLM_API_KEY")
+
+def _resolve_base_url(profile: ModelProfile) -> str:
+    """Return the base_url for this profile, or '' to trigger stub mode.
+
+    Resolution order: profile.base_url → env var → '' (stub).
+    The env var must be explicitly set; no hardcoded defaults so that
+    the test suite (no env vars set) always stays offline.
+    """
+    if profile.inference_backend == "stub":
+        return ""
+    if profile.base_url:
+        return profile.base_url
+    env_key = _BACKEND_ENV.get(profile.inference_backend, "")
+    return os.getenv(env_key, "") if env_key else ""
+
+
+def _is_stub(profile: ModelProfile) -> bool:
+    return not _resolve_base_url(profile)
 
 
 def _build_stub(schema: type[T]) -> T:
     """Return a deterministic stub instance for the given schema type."""
     if schema is DecomposedGoal:
         return _STUB_DECOMPOSED_GOAL  # type: ignore[return-value]
-    # Attempt minimal no-validation construction for other schemas
     try:
         return schema.model_construct()  # type: ignore[return-value, union-attr]
     except Exception:
@@ -44,18 +67,19 @@ def call_llm(
     model_profile: ModelProfile,
     otel_span: Any = None,
 ) -> T:
-    """
-    Single LLM call returning structured output via Instructor.
-    Falls back to stub when offline or in test mode.
-    """
-    if _is_stub_mode(model_profile):
+    """Single LLM call returning structured output via Instructor + openai client."""
+    if _is_stub(model_profile):
         return _build_stub(schema)
 
-    # Heavy imports deferred — Ollama not required during tests
+    # Heavy imports deferred — openai/instructor not required during offline tests
     import instructor
-    import ollama as _ollama
+    from openai import OpenAI
 
-    client = instructor.from_ollama(_ollama.Client())
+    base_url = _resolve_base_url(model_profile)
+    client = instructor.from_openai(
+        OpenAI(base_url=base_url, api_key="no-key"),
+        mode=instructor.Mode.JSON,
+    )
 
     if otel_span is not None:
         otel_span.set_attribute("llm.model_id", model_profile.model_id)
@@ -65,6 +89,7 @@ def call_llm(
         model=model_profile.model_id,
         messages=[{"role": "user", "content": prompt}],
         response_model=schema,
+        max_retries=2,
     )
 
 
@@ -75,10 +100,7 @@ def subagent_spawn(
     pass_number: int = 1,
     otel_span: Any = None,
 ) -> T:
-    """
-    Fresh LLM context per call — no conversation history bleeds across passes.
-    pass_number is recorded for observability only.
-    """
+    """Fresh LLM context per call — no conversation history bleeds across passes."""
     if otel_span is not None:
         otel_span.set_attribute("llm.pass_number", pass_number)
     return call_llm(prompt, schema, model_profile, otel_span=otel_span)
@@ -89,10 +111,7 @@ async def with_fallback(
     fallback_fn: Any,
     timeout_seconds: float,
 ) -> Any:
-    """
-    Run primary_fn under a deadline; on timeout or any exception use fallback_fn.
-    Accepts both sync and async callables for both branches.
-    """
+    """Run primary_fn under a deadline; on timeout or exception use fallback_fn."""
     loop = asyncio.get_event_loop()
 
     async def _run(fn: Any) -> Any:

@@ -26,9 +26,10 @@ class Settings(BaseSettings):
     supabase_anon_key: str = Field(default="", description="Supabase anonymous key.")
     supabase_service_role_key: str = Field(default="", description="Supabase service-role key.")
 
-    # LLM (Phase 1+)
-    ollama_host: str = Field(default="http://localhost:11434")
-    ollama_model: str = Field(default="llama3-8b")
+    # LLM (Phase 1+) — base_url empty = stub mode (no network call)
+    llamacpp_base_url: str = Field(default="", description="llama-server OpenAI-compat endpoint.")
+    bitnet_base_url: str = Field(default="", description="BitNet llama-server endpoint.")
+    mlx_base_url: str = Field(default="", description="MLX server endpoint (iOS on-device).")
 
     # Security
     jwt_secret: str = Field(default="changeme")

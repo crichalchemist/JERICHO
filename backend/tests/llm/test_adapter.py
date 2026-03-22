@@ -20,16 +20,31 @@ _STUB_PROFILE = ModelProfile(
     supports_tool_use=False,
 )
 
-_OLLAMA_PROFILE = ModelProfile(
-    model_id="llama3-8b",
-    inference_backend="ollama",
-    context_window_tokens=8192,
+_LLAMACPP_PROFILE = ModelProfile(
+    model_id="llama3-8b-instruct",
+    inference_backend="llamacpp",
+    base_url="",
+    context_window_tokens=4096,
     structured_output_reliability="medium",
     reasoning_depth="medium",
     recommended_pass_count=4,
     self_critique_required=True,
-    timeout_threshold_seconds=45,
+    timeout_threshold_seconds=60,
     latency_profile="medium",
+    supports_tool_use=False,
+)
+
+_BITNET_PROFILE = ModelProfile(
+    model_id="bitnet-2b",
+    inference_backend="bitnet",
+    base_url="",
+    context_window_tokens=2048,
+    structured_output_reliability="low",
+    reasoning_depth="low",
+    recommended_pass_count=1,
+    self_critique_required=False,
+    timeout_threshold_seconds=15,
+    latency_profile="fast",
     supports_tool_use=False,
 )
 
@@ -39,9 +54,15 @@ def test_stub_profile_returns_decomposed_goal_without_llm():
     assert isinstance(result, DecomposedGoal)
 
 
-def test_ollama_profile_falls_back_when_no_api_key(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.delenv("LLM_API_KEY", raising=False)
-    result = call_llm("any prompt", DecomposedGoal, _OLLAMA_PROFILE)
+def test_llamacpp_falls_back_to_stub_when_base_url_empty(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("LLAMACPP_BASE_URL", raising=False)
+    result = call_llm("any prompt", DecomposedGoal, _LLAMACPP_PROFILE)
+    assert isinstance(result, DecomposedGoal)
+
+
+def test_bitnet_falls_back_to_stub_when_base_url_empty(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("BITNET_BASE_URL", raising=False)
+    result = call_llm("any prompt", DecomposedGoal, _BITNET_PROFILE)
     assert isinstance(result, DecomposedGoal)
 
 
