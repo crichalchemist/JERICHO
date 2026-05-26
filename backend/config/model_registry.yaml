@@ -21,6 +21,23 @@ models:
     # ~/BitNet/build/bin/llama-server --port 8081
     # model: ~/BitNet/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf
 
+  - model_id: "qwen2.5-7b-instruct"
+    inference_backend: "llamacpp"
+    base_url: ""
+    context_window_tokens: 8192
+    structured_output_reliability: "high"
+    reasoning_depth: "high"
+    recommended_pass_count: 2
+    self_critique_required: false
+    timeout_threshold_seconds: 60
+    latency_profile: "medium"
+    supports_tool_use: true
+    # /Volumes/Containers/ik_llama.cpp/build/bin/llama-server \
+    #   --model ~/models/Qwen2.5-7B-Instruct-Q4_K_M.gguf \
+    #   --port 8080 --ctx-size 8192
+    # LLAMACPP_BASE_URL=http://localhost:8080/v1
+    # DEFAULT_MODEL_ID=qwen2.5-7b-instruct
+
   - model_id: "llama3-8b-instruct"
     inference_backend: "llamacpp"
     base_url: ""
