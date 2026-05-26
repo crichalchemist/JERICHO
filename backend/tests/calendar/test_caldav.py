@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from jericho.calendar.caldav import CalDAVBackend
-from jericho.domain.types import Task, TaskStatus
+from jyriko.calendar.caldav import CalDAVBackend
+from jyriko.domain.types import Task, TaskStatus
 
 
 def _make_task(task_id: str = "task-002") -> Task:
@@ -34,7 +34,7 @@ def _make_backend() -> tuple[CalDAVBackend, MagicMock, MagicMock]:
     mock_client = MagicMock()
     mock_client.principal.return_value = mock_principal
 
-    with patch("jericho.calendar.caldav.DAVClient", return_value=mock_client):
+    with patch("jyriko.calendar.caldav.DAVClient", return_value=mock_client):
         backend = CalDAVBackend(url="https://caldav.example.com", username="u", password="p")
 
     return backend, mock_client, mock_calendar

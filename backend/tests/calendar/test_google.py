@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from jericho.calendar.google import GoogleCalendarBackend, _JERICHO_TAG_KEY
-from jericho.domain.types import Task, TaskStatus
+from jyriko.calendar.google import GoogleCalendarBackend, _JERICHO_TAG_KEY
+from jyriko.domain.types import Task, TaskStatus
 
 
 def _make_task(task_id: str = "task-001", scheduled_date: date | None = date(2026, 4, 1)) -> Task:
@@ -33,7 +33,7 @@ def mock_service() -> MagicMock:
 
 @pytest.fixture()
 def backend(mock_service: MagicMock) -> GoogleCalendarBackend:
-    with patch("jericho.calendar.google._build_service", return_value=mock_service):
+    with patch("jyriko.calendar.google._build_service", return_value=mock_service):
         return GoogleCalendarBackend(credentials=MagicMock())
 
 

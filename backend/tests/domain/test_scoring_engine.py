@@ -1,8 +1,8 @@
 """Tests for scoring_engine — mirrors tests/core/scoring-engine.test.js."""
 import pytest
 
-from jericho.domain.scoring_engine import compute_integrity_score, explain_integrity_score
-from jericho.domain.task_status import TASK_STATUS_COMPLETED, TASK_STATUS_MISSED, TASK_STATUS_PENDING
+from jyriko.domain.scoring_engine import compute_integrity_score, explain_integrity_score
+from jyriko.domain.task_status import TASK_STATUS_COMPLETED, TASK_STATUS_MISSED, TASK_STATUS_PENDING
 
 
 def _task(status: str, impact: float = 1.0, difficulty: int = 2, on_time: bool = True) -> dict:

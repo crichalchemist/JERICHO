@@ -5,9 +5,9 @@ from datetime import date, timedelta
 
 import pytest
 
-from jericho.constants import LOOK_AHEAD_DEFAULT_DAYS, LOOK_AHEAD_MAX_EXTENSION_DAYS, VIABLE_THRESHOLD
-from jericho.domain.look_ahead import find_placement_day, run_feathering, sort_tasks_for_placement
-from jericho.domain.types import CapacityVector, PlacementResult, Task, TaskStatus
+from jyriko.constants import LOOK_AHEAD_DEFAULT_DAYS, LOOK_AHEAD_MAX_EXTENSION_DAYS, VIABLE_THRESHOLD
+from jyriko.domain.look_ahead import find_placement_day, run_feathering, sort_tasks_for_placement
+from jyriko.domain.types import CapacityVector, PlacementResult, Task, TaskStatus
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -242,7 +242,7 @@ def test_all_14_days_full_returns_none() -> None:
 
 def test_anchor_event_reduces_available_capacity() -> None:
     """Pre-loading ANCHOR_EVENT_CAPACITY_BUFFER * capacity simulates a calendar anchor."""
-    from jericho.constants import ANCHOR_EVENT_CAPACITY_BUFFER
+    from jyriko.constants import ANCHOR_EVENT_CAPACITY_BUFFER
 
     # Anchor event consumes 20% of capacity on day 1
     day1 = _TODAY + timedelta(days=1)

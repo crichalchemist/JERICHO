@@ -13,8 +13,8 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-from jericho.db.deps import require_db_client
-from jericho.main import create_app
+from jyriko.db.deps import require_db_client
+from jyriko.main import create_app
 
 _INSTANCE_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 _INSTANCE_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"

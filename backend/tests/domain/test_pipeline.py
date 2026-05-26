@@ -1,7 +1,7 @@
 """Tests for the pipeline orchestrator."""
 import pytest
 
-from jericho.domain.pipeline import run_pipeline
+from jyriko.domain.pipeline import run_pipeline
 
 
 def test_invalid_goal_returns_error_shape():

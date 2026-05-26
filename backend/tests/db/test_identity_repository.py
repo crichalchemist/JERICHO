@@ -5,7 +5,7 @@ import uuid
 
 import pytest
 
-from jericho.db.repositories.identity import get_identity_state, upsert_identity_day
+from jyriko.db.repositories.identity import get_identity_state, upsert_identity_day
 
 pytestmark = pytest.mark.asyncio
 

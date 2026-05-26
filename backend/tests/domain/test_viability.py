@@ -3,8 +3,8 @@ from datetime import date
 
 import pytest
 
-from jericho.domain.types import Task, TaskStatus
-from jericho.domain.viability import check_viability, compute_load_ratio, should_trigger_viability_pause
+from jyriko.domain.types import Task, TaskStatus
+from jyriko.domain.viability import check_viability, compute_load_ratio, should_trigger_viability_pause
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────

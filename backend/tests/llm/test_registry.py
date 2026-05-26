@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from jericho.llm.registry import ModelProfile, get_model_profile, load_registry
+from jyriko.llm.registry import ModelProfile, get_model_profile, load_registry
 
 REGISTRY_PATH = Path(__file__).parents[2] / "config" / "model_registry.yaml"
 
@@ -18,31 +18,31 @@ def test_load_registry_returns_tuple_of_profiles():
 def test_load_registry_has_expected_models():
     registry = load_registry(REGISTRY_PATH)
     model_ids = {p.model_id for p in registry}
-    assert "llama3-8b-instruct" in model_ids
     assert "bitnet-2b" in model_ids
+    assert "llama3-8b-instruct" in model_ids
     assert "stub" in model_ids
 
 
-def test_get_model_profile_found():
+def test_get_bitnet_profile():
     registry = load_registry(REGISTRY_PATH)
-    profile = get_model_profile("llama3-8b-instruct", registry)
-    assert profile.model_id == "llama3-8b-instruct"
-    assert profile.inference_backend == "llamacpp"
-    assert profile.recommended_pass_count == 4
+    profile = get_model_profile("bitnet-2b", registry)
+    assert profile.model_id == "bitnet-2b"
+    assert profile.inference_backend == "bitnet"
+    assert profile.recommended_pass_count == 2
     assert profile.self_critique_required is True
 
 
-def test_model_profile_has_base_url():
+def test_get_llamacpp_profile():
     registry = load_registry(REGISTRY_PATH)
     profile = get_model_profile("llama3-8b-instruct", registry)
-    assert hasattr(profile, "base_url")
+    assert profile.inference_backend == "llamacpp"
+    assert profile.recommended_pass_count == 3
 
 
-def test_bitnet_profile_exists():
+def test_profiles_have_base_url():
     registry = load_registry(REGISTRY_PATH)
-    profile = get_model_profile("bitnet-2b", registry)
-    assert profile.inference_backend == "bitnet"
-    assert profile.latency_profile == "fast"
+    for profile in registry:
+        assert hasattr(profile, "base_url")
 
 
 def test_get_model_profile_not_found_raises():

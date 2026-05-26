@@ -1,7 +1,7 @@
 """Tests for validate_goal — mirrors tests/core/validate-goal.test.js."""
 import pytest
 
-from jericho.domain.validate_goal import validate_goal
+from jyriko.domain.validate_goal import validate_goal
 
 
 def test_valid_goal_returns_parsed_fields():

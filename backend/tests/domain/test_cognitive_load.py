@@ -1,7 +1,7 @@
 """Tests for domain/cognitive_load.py — PRD §3.3."""
 import pytest
 
-from jericho.domain.cognitive_load import compute_cognitive_load
+from jyriko.domain.cognitive_load import compute_cognitive_load
 
 
 def test_short_no_deps_no_override():
@@ -41,7 +41,7 @@ def test_three_plus_dependents_multiplier():
 
 
 def test_user_override_adds_bonus():
-    from jericho.constants import USER_OVERRIDE_LOAD_BONUS
+    from jyriko.constants import USER_OVERRIDE_LOAD_BONUS
     result = compute_cognitive_load(0.4, 30, 0, user_override=True)
     assert result == pytest.approx(0.4 + USER_OVERRIDE_LOAD_BONUS)
 

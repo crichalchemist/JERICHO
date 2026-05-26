@@ -1,7 +1,7 @@
 """Tests for AES-256-GCM token store encrypt/decrypt."""
 import pytest
 
-from jericho.calendar.token_store import decrypt_payload, encrypt_payload
+from jyriko.calendar.token_store import decrypt_payload, encrypt_payload
 
 
 _KEY = "test-secret-key"

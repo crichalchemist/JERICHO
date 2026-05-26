@@ -2,7 +2,7 @@
 import pytest
 from httpx import AsyncClient, ASGITransport
 
-from jericho.main import app
+from jyriko.main import app
 
 
 @pytest.fixture

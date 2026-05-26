@@ -3,12 +3,12 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from jericho.domain.state_machine import (
+from jyriko.domain.state_machine import (
     VALID_TRANSITIONS,
     InvalidTransitionError,
     transition,
 )
-from jericho.domain.types import Task, TaskStatus
+from jyriko.domain.types import Task, TaskStatus
 
 
 # ── Fixture ───────────────────────────────────────────────────────────────────

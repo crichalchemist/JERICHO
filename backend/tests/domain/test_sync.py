@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from jericho.domain.sync import IdentitySyncRow, resolve_identity_rows
+from jyriko.domain.sync import IdentitySyncRow, resolve_identity_rows
 
 
 def _row(

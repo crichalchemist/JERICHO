@@ -5,6 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 ## Commands
 
 ### JavaScript (Node.js — legacy, Phase 0 transition)
+
 ```bash
 npm install          # install JS dependencies
 npm run dev          # Node API (port 3000) + Vite client (port 5173) concurrently
@@ -14,9 +15,11 @@ npm test             # Jest suite with coverage (src/core only)
 npm run lint         # ESLint + Prettier rules
 npm run build        # lint + test + vite build
 ```
+
 Run a single JS test: `NODE_OPTIONS=--experimental-vm-modules jest tests/core/scoring-engine.test.js`
 
 ### Python (FastAPI — primary backend, port 8000)
+
 ```bash
 cd backend
 uv venv .venv && source .venv/bin/activate   # one-time setup
@@ -28,6 +31,7 @@ uv run pytest tests/domain/test_pipeline.py -v --no-cov   # single file
 ```
 
 Integration tests (require local Supabase via Colima):
+
 ```bash
 cd infra/supabase && docker compose up -d   # start Supabase stack
 SUPABASE_URL=http://localhost:8000 \
@@ -36,6 +40,7 @@ uv run pytest tests/db/ -v --no-cov         # RLS + repository tests
 ```
 
 DB migrations (run inside Docker network — macOS host can't reach container IPs directly):
+
 ```bash
 cd backend
 docker run --rm --network supabase_default \
@@ -45,13 +50,17 @@ docker run --rm --network supabase_default \
 ```
 
 LLM env vars (stub mode when unset — tests always run offline):
+
 ```
-LLAMACPP_BASE_URL=http://localhost:8080/v1   # llama-server (macports)
+DEFAULT_MODEL_ID=bitnet-2b                   # active backend (default: bitnet-2b)
 BITNET_BASE_URL=http://localhost:8081/v1     # BitNet llama-server
-MLX_BASE_URL=http://localhost:8082/v1        # on-device iOS (Phase 6)
+LLAMACPP_BASE_URL=http://localhost:8080/v1   # llama.cpp llama-server
+VLLM_BASE_URL=                               # vLLM (future)
+COREML_BASE_URL=                             # CoreML (future, iOS/macOS on-device)
 ```
 
 ### Cutover (switching frontend from Node to FastAPI)
+
 ```bash
 VITE_API_BASE_URL=http://localhost:8000 npm run dev:client
 python scripts/compare_routes.py            # verify parity before cutover
@@ -69,23 +78,23 @@ Goal Input → validateGoal → deriveIdentityRequirements → computeCapability
 
 ### Layer map
 
-| Layer | Path | Role |
-|---|---|---|
-| Domain | `backend/jericho/domain/` | Pure functions, no I/O. All business logic. |
-| LLM | `backend/jericho/llm/` | Instructor + openai client. Stubs when backend URL unset. |
-| DB | `backend/jericho/db/` | Supabase async repositories + Alembic migrations. |
-| Routers | `backend/jericho/routers/` | Thin FastAPI HTTP layer — no logic. |
-| Workers | `backend/jericho/workers/` | APScheduler nightly rescheduler (23:59 cron). |
-| Calendar | `backend/jericho/calendar/` | Google + CalDAV backends behind `CalendarBackend` Protocol. |
-| UI | `src/ui/` | React/Vite client (unchanged throughout migration). |
-| Legacy JS | `src/core/`, `src/api/` | Node.js — kept idle post-cutover, then retired. |
-| Infra | `infra/supabase/` | Self-hosted Supabase Docker stack (Colima). |
+| Layer     | Path                        | Role                                                        |
+| --------- | --------------------------- | ----------------------------------------------------------- |
+| Domain    | `backend/jericho/domain/`   | Pure functions, no I/O. All business logic.                 |
+| LLM       | `backend/jericho/llm/`      | Instructor + openai client. Stubs when backend URL unset.   |
+| DB        | `backend/jericho/db/`       | Supabase async repositories + Alembic migrations.           |
+| Routers   | `backend/jericho/routers/`  | Thin FastAPI HTTP layer — no logic.                         |
+| Workers   | `backend/jericho/workers/`  | APScheduler nightly rescheduler (23:59 cron).               |
+| Calendar  | `backend/jericho/calendar/` | Google + CalDAV backends behind `CalendarBackend` Protocol. |
+| UI        | `src/ui/`                   | React/Vite client (unchanged throughout migration).         |
+| Legacy JS | `src/core/`, `src/api/`     | Node.js — kept idle post-cutover, then retired.             |
+| Infra     | `infra/supabase/`           | Self-hosted Supabase Docker stack (Colima).                 |
 
 ### Key design decisions
 
 - **Pure functions everywhere in `backend/jericho/domain/`** — frozen dataclasses, no I/O, no side effects. Side effects are injected (`ledger_writer`, `calendar_sync` callables).
 - **LLM stub by default** — resolution order: `profile.base_url` → env var → `""` (stub). No hardcoded localhost defaults, so the full test suite runs offline.
-- **LLM backends**: llama.cpp (macports `/opt/local/bin/llama-server`, port 8080) for heavy tasks; BitNet.cpp (`~/BitNet/build/bin/llama-server`, port 8081) for lightweight tasks. Both expose identical OpenAI-compatible APIs via `openai.OpenAI(base_url=...) + Instructor`.
+- **LLM backends**: Pluggable via `DEFAULT_MODEL_ID`. BitNet (port 8081, default), llama.cpp (port 8080), vLLM (future), CoreML (future iOS/macOS). All use OpenAI-compatible API via `instructor.from_openai(OpenAI(base_url=...))`. BitNet also supports `subprocess://` fallback via `llama-cli`.
 - **Supabase RLS** — every table has `instance_id` isolation. FastAPI middleware injects `SET LOCAL app.instance_id` per request from JWT.
 - **DB migrations run inside Docker** — macOS host can't directly reach container IPs; use `docker run --network supabase_default`.
 - **`str+Enum` pattern** — domain enums inherit from both `str` and `Enum` (e.g. `class TaskStatus(str, Enum)`) for DB serialization compatibility.
@@ -98,7 +107,7 @@ Key pure-function modules: `viability.py` (load ratio + pause triggers), `capaci
 
 ### LLM registry
 
-`config/model_registry.yaml` defines `ModelProfile` entries. Each profile specifies `inference_backend` (`llamacpp` | `bitnet` | `mlx` | `stub`), `recommended_pass_count`, and `self_critique_required`. The adapter resolves `base_url` at call time — empty string always triggers stub mode.
+`config/model_registry.yaml` defines `ModelProfile` entries. Each profile specifies `inference_backend` (`bitnet` | `llamacpp` | `vllm` | `coreml` | `stub`), `recommended_pass_count`, and `self_critique_required`. `DEFAULT_MODEL_ID` selects the active profile. The adapter resolves `base_url` at call time — empty string triggers stub mode.
 
 ### Scoring
 

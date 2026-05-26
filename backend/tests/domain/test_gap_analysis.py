@@ -1,7 +1,7 @@
 """Tests for gap_analysis — mirrors tests/core/gap-analysis.test.js."""
 import pytest
 
-from jericho.domain.gap_analysis import compute_capability_gaps, rank_capability_gaps
+from jyriko.domain.gap_analysis import compute_capability_gaps, rank_capability_gaps
 
 
 def test_compute_gaps_unknown_capability_defaults_to_3():

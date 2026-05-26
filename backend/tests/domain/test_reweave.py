@@ -8,14 +8,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from jericho.domain.reweave import (
+from jyriko.domain.reweave import (
     SundownInput,
     SundownOutput,
     compute_completion_ratio,
     run_reweave_pipeline,
     select_tone_branch,
 )
-from jericho.domain.types import CapacityVector, MomentumSignal, TaskStatus
+from jyriko.domain.types import CapacityVector, MomentumSignal, TaskStatus
 
 _BASE_CAPACITY = CapacityVector(values=(0.8, 0.8, 1.0, 0.8, 0.8, 0.4, 0.4))
 

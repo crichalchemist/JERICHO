@@ -1,13 +1,13 @@
 """Tests for domain/capacity_profile.py — PRD §3.6."""
 import pytest
 
-from jericho.constants import COLD_START_MULTIPLIERS, EWA_ALPHA
-from jericho.domain.capacity_profile import (
+from jyriko.constants import COLD_START_MULTIPLIERS, EWA_ALPHA
+from jyriko.domain.capacity_profile import (
     apply_cold_start,
     compute_ewa,
     derive_capacity_from_signal,
 )
-from jericho.domain.types import CapacityVector, MomentumSignal
+from jyriko.domain.types import CapacityVector, MomentumSignal
 
 
 # ── apply_cold_start ──────────────────────────────────────────────────────────

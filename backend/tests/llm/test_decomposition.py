@@ -3,9 +3,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from jericho.llm.prompts.decomposition import run_decomposition_pipeline
-from jericho.llm.registry import ModelProfile
-from jericho.llm.schemas import DecomposedGoal, SelfCritiqueRevision
+from jyriko.llm.prompts.decomposition import run_decomposition_pipeline
+from jyriko.llm.registry import ModelProfile
+from jyriko.llm.schemas import DecomposedGoal, SelfCritiqueRevision
 
 
 def _profile(pass_count: int, critique: bool) -> ModelProfile:
@@ -39,7 +39,7 @@ def test_pass_count_respected(monkeypatch):
         calls.append(pass_number)
         return stub
 
-    monkeypatch.setattr("jericho.llm.prompts.decomposition.subagent_spawn", _fake_spawn)
+    monkeypatch.setattr("jyriko.llm.prompts.decomposition.subagent_spawn", _fake_spawn)
     profile = _profile(pass_count=3, critique=False)
     run_decomposition_pipeline("goal", profile)
     assert len(calls) == 3
@@ -49,7 +49,7 @@ def test_pass_count_respected(monkeypatch):
 def test_self_critique_adds_extra_pass(monkeypatch):
     """When self_critique_required, subagent_spawn is called pass_count + 1 times."""
     from decimal import Decimal
-    from jericho.llm.schemas import TaskDecomposition
+    from jyriko.llm.schemas import TaskDecomposition
 
     task = TaskDecomposition(
         title="t",
@@ -74,7 +74,7 @@ def test_self_critique_adds_extra_pass(monkeypatch):
     def _fake_spawn(prompt, schema, model_profile, pass_number=1, otel_span=None):
         return next(returns)
 
-    monkeypatch.setattr("jericho.llm.prompts.decomposition.subagent_spawn", _fake_spawn)
+    monkeypatch.setattr("jyriko.llm.prompts.decomposition.subagent_spawn", _fake_spawn)
     profile = _profile(pass_count=2, critique=True)
     result = run_decomposition_pipeline("goal", profile)
     assert isinstance(result, DecomposedGoal)
@@ -89,7 +89,7 @@ def test_self_critique_skipped_when_no_tasks(monkeypatch):
         calls.append(pass_number)
         return stub
 
-    monkeypatch.setattr("jericho.llm.prompts.decomposition.subagent_spawn", _fake_spawn)
+    monkeypatch.setattr("jyriko.llm.prompts.decomposition.subagent_spawn", _fake_spawn)
     profile = _profile(pass_count=1, critique=True)
     run_decomposition_pipeline("goal", profile)
     # Only 1 call — critique skipped because tasks list is empty
@@ -99,7 +99,7 @@ def test_self_critique_skipped_when_no_tasks(monkeypatch):
 def test_critique_not_called_when_flag_false(monkeypatch):
     """When self_critique_required is False, critique prompt never fires."""
     from decimal import Decimal
-    from jericho.llm.schemas import TaskDecomposition
+    from jyriko.llm.schemas import TaskDecomposition
 
     task = TaskDecomposition(
         title="t", instructions="x", estimated_cost=Decimal("0"),
@@ -113,7 +113,7 @@ def test_critique_not_called_when_flag_false(monkeypatch):
         calls.append(pass_number)
         return decomposed
 
-    monkeypatch.setattr("jericho.llm.prompts.decomposition.subagent_spawn", _fake_spawn)
+    monkeypatch.setattr("jyriko.llm.prompts.decomposition.subagent_spawn", _fake_spawn)
     profile = _profile(pass_count=2, critique=False)
     run_decomposition_pipeline("goal", profile)
     assert len(calls) == 2

@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from jericho.workers.scheduler import create_scheduler, run_nightly_rescheduler
+from jyriko.workers.scheduler import create_scheduler, run_nightly_rescheduler
 
 
 # ---------------------------------------------------------------------------

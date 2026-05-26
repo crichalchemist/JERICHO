@@ -59,9 +59,10 @@ VITE_API_BASE_URL=http://localhost:8000 npm run dev:client   # port 5173
 
 ```bash
 # Heavy tasks (decomposition, self-critique)
+# Note: AMD Radeon Pro 580 requires -ngl 0 (Metal unsupported for non-Apple-Silicon)
 /opt/local/bin/llama-server \
   -m ~/models/llama3-8b-instruct/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf \
-  --port 8080 --ctx-size 4096
+  --port 8080 --ctx-size 4096 -ngl 0
 
 # Lightweight tasks (narrative, summaries)
 cd ~/BitNet && ./build/bin/llama-server \
