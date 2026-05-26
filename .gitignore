@@ -10,6 +10,9 @@ dist
 .env
 backend/.env
 
+# Local model/inference directories (not versioned)
+backend/third_party/
+
 # Python
 __pycache__/
 *.pyc
