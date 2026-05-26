@@ -1,10 +1,9 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// VITE_API_BASE_URL controls which backend the frontend proxies to:
-//   http://localhost:3000  → Node.js (Phase 0 transition, default)
-//   http://localhost:8000  → FastAPI (set after route-parity cutover)
-const API_BASE = process.env.VITE_API_BASE_URL || 'http://localhost:3000';
+// VITE_API_BASE_URL controls which backend the frontend proxies to.
+// Default is now FastAPI (port 8000). Override to :3000 for legacy Node.js.
+const API_BASE = process.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
 export default defineConfig({
   plugins: [react()],
@@ -25,6 +24,10 @@ export default defineConfig({
       '/ai': { target: API_BASE, changeOrigin: true },
       '/team': { target: API_BASE, changeOrigin: true },
       '/internal': { target: API_BASE, changeOrigin: true },
+      '/calendar': { target: API_BASE, changeOrigin: true },
+      '/rhythms': { target: API_BASE, changeOrigin: true },
+      '/accountability': { target: API_BASE, changeOrigin: true },
+      '/native': { target: API_BASE, changeOrigin: true },
     }
   },
   define: {
