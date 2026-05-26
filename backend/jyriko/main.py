@@ -38,11 +38,14 @@ from jyriko.workers.scheduler import create_scheduler
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Startup / shutdown lifecycle."""
-    import os
-
-    print(f"[STARTUP] BITNET_BASE_URL env: {os.environ.get('BITNET_BASE_URL', 'NOT SET')}")
-
     settings = get_settings()
+
+    print(
+        f"[STARTUP] model={settings.default_model_id}"
+        f"  llamacpp={settings.llamacpp_base_url or 'stub'}"
+        f"  bitnet={settings.bitnet_base_url or 'stub'}"
+        f"  vllm={settings.vllm_base_url or 'stub'}"
+    )
 
     # Phase 1: load model registry once; stored on app.state for routers to use
     app.state.registry = load_registry(settings.model_registry_path)

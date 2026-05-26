@@ -6,6 +6,10 @@ dist
 *.log
 .worktrees
 
+# Env files (local overrides — never commit)
+.env
+backend/.env
+
 # Python
 __pycache__/
 *.pyc
