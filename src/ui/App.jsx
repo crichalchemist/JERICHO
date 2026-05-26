@@ -421,6 +421,7 @@ export default function App() {
     const trimmed = (text || '').trim();
     const errors = [];
     if (!trimmed) errors.push('Goal text is required.');
+    if (!trimmed.toLowerCase().startsWith('i will')) errors.push('Goal must start with "I will".');
     if (trimmed.length < 20) errors.push('Goal must be at least 20 characters.');
     if (trimmed.length > 280) errors.push('Goal must be at most 280 characters.');
     if (!/\d/.test(trimmed)) errors.push('Goal must include a number for measurability.');
@@ -731,7 +732,7 @@ export default function App() {
         <input
           type="text"
           className="goal-input"
-          placeholder='e.g. "Grow revenue to $10k/month by 2026-06-01"'
+          placeholder='e.g. "I will grow revenue to $10k/month by 2026-06-01"'
           value={goalText}
           onChange={(e) => {
             setGoalText(e.target.value);
